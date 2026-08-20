@@ -1,0 +1,50 @@
+"""Constants for Fazenda Irrigation."""
+
+from __future__ import annotations
+
+DOMAIN = "fazenda_irrigation"
+
+CONF_CONTROLLER_NAME = "controller_name"
+CONF_ZONE_ENTITIES = "zone_entities"
+CONF_ZONE_NAMES = "zone_names"
+CONF_DURATION_PRESETS = "duration_presets"
+CONF_DURATION_MIN = "duration_min"
+CONF_DURATION_MAX = "duration_max"
+CONF_DURATION_STEP = "duration_step"
+CONF_DEFAULT_DURATION = "default_duration"
+CONF_DEFAULT_MODE = "default_mode"
+CONF_MAX_ON_MINUTES = "max_on_minutes"
+CONF_COOLDOWN_MINUTES = "cooldown_minutes"
+CONF_TANK_LEVEL_ENTITY = "tank_level_entity"
+CONF_MIN_TANK_LEVEL = "min_tank_level"
+CONF_WATER_SOURCE_ENTITY = "water_source_entity"
+CONF_SOURCE_SETTLE_SECONDS = "source_settle_seconds"
+
+DEFAULT_DURATION_PRESETS = "15, 30, 60, 120"
+DEFAULT_DURATION_MIN = 5
+DEFAULT_DURATION_MAX = 360
+DEFAULT_DURATION_STEP = 5
+DEFAULT_DEFAULT_DURATION = 120
+DEFAULT_MODE = "sequential"
+DEFAULT_MAX_ON_MINUTES = 40
+DEFAULT_COOLDOWN_MINUTES = 10
+DEFAULT_MIN_TANK_LEVEL = 0
+DEFAULT_SOURCE_SETTLE_SECONDS = 0
+
+MODE_SEQUENTIAL = "sequential"
+MODE_PARALLEL = "parallel"
+MODES = [MODE_SEQUENTIAL, MODE_PARALLEL]
+
+STATUS_IDLE = "idle"
+STATUS_RUNNING = "running"
+STATUS_STOPPING = "stopping"
+STATUS_ERROR = "error"
+STATUSES = [STATUS_IDLE, STATUS_RUNNING, STATUS_STOPPING, STATUS_ERROR]
+
+SERVICE_START = "start"
+SERVICE_STOP = "stop"
+ATTR_ZONES = "zones"
+ATTR_DURATION_MINUTES = "duration_minutes"
+ATTR_MODE = "mode"
+
+STORAGE_VERSION = 1

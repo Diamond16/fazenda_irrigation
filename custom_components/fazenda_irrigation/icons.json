@@ -1,0 +1,11 @@
+{
+  "services": {
+    "start": {"service": "mdi:sprinkler-variant"},
+    "stop": {"service": "mdi:stop-circle-outline"}
+  },
+  "entity": {
+    "sensor": {
+      "controller": {"default": "mdi:sprinkler-variant"}
+    }
+  }
+}

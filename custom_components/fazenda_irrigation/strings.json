@@ -1,0 +1,109 @@
+{
+  "title": "Fazenda Irrigation",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Create an irrigation controller",
+        "data": {
+          "controller_name": "Controller name",
+          "zone_entities": "Irrigation zones",
+          "zone_names": "Zone names (one per line, optional)",
+          "duration_presets": "Duration presets in minutes, comma-separated",
+          "duration_min": "Minimum duration, min",
+          "duration_max": "Maximum duration, min",
+          "duration_step": "Duration step, min",
+          "default_duration": "Default duration, min",
+          "default_mode": "Default watering scheme",
+          "max_on_minutes": "Maximum continuous valve time, min",
+          "cooldown_minutes": "Required valve cooldown, min",
+          "tank_level_entity": "Water level entity (optional)",
+          "min_tank_level": "Minimum water level in sensor units; 0 disables blocking",
+          "water_source_entity": "Water source control (optional)",
+          "source_settle_seconds": "Water source settling time, sec"
+        },
+        "data_description": {
+          "zone_names": "Leave empty to use the Home Assistant entity names. If set, the number and order must match the selected zones.",
+          "duration_presets": "For example: 15, 30, 60, 120",
+          "water_source_entity": "A switch or valve opened before irrigation and closed after it. Do not select a tank fill valve unless it supplies the irrigation line.",
+          "min_tank_level": "Uses the configured sensor's native unit, such as %, L, or cm."
+        }
+      }
+    },
+    "error": {
+      "no_zones": "Select at least one irrigation zone",
+      "invalid_presets": "Enter one or more positive integer durations separated by commas",
+      "zone_name_count": "The number of zone names must match the number of selected zones",
+      "duplicate_zones": "Each irrigation zone may be selected only once",
+      "source_is_zone": "The water source control cannot also be an irrigation zone",
+      "invalid_duration_range": "The duration range and step are incompatible",
+      "invalid_default_duration": "The default duration must be inside the range and match the step",
+      "preset_out_of_range": "Every preset must be inside the range and match the step"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Irrigation controller settings",
+        "data": {
+          "controller_name": "Controller name",
+          "zone_entities": "Irrigation zones",
+          "zone_names": "Zone names (one per line, optional)",
+          "duration_presets": "Duration presets in minutes, comma-separated",
+          "duration_min": "Minimum duration, min",
+          "duration_max": "Maximum duration, min",
+          "duration_step": "Duration step, min",
+          "default_duration": "Default duration, min",
+          "default_mode": "Default watering scheme",
+          "max_on_minutes": "Maximum continuous valve time, min",
+          "cooldown_minutes": "Required valve cooldown, min",
+          "tank_level_entity": "Water level entity (optional)",
+          "min_tank_level": "Minimum water level in sensor units; 0 disables blocking",
+          "water_source_entity": "Water source control (optional)",
+          "source_settle_seconds": "Water source settling time, sec"
+        }
+      }
+    }
+  },
+  "selector": {
+    "default_mode": {
+      "options": {
+        "sequential": "Sequential",
+        "parallel": "Simultaneous"
+      }
+    },
+    "irrigation_mode": {
+      "options": {
+        "sequential": "Sequential",
+        "parallel": "Simultaneous"
+      }
+    }
+  },
+  "services": {
+    "start": {
+      "name": "Start irrigation",
+      "description": "Start a safe manual irrigation session.",
+      "fields": {
+        "zones": {"name": "Zones", "description": "Zones to water."},
+        "duration_minutes": {"name": "Duration", "description": "Actual valve-open time for each zone."},
+        "mode": {"name": "Scheme", "description": "Water zones sequentially or simultaneously."}
+      }
+    },
+    "stop": {
+      "name": "Stop irrigation",
+      "description": "Stop the session and close all configured irrigation zones."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "controller": {
+        "name": "Irrigation",
+        "state": {
+          "idle": "Idle",
+          "running": "Running",
+          "stopping": "Stopping",
+          "error": "Error"
+        }
+      }
+    }
+  }
+}

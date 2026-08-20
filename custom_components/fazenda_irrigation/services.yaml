@@ -1,0 +1,37 @@
+start:
+  target:
+    entity:
+      integration: fazenda_irrigation
+      domain: sensor
+  fields:
+    zones:
+      required: true
+      selector:
+        entity:
+          multiple: true
+          filter:
+            - domain: switch
+            - domain: valve
+    duration_minutes:
+      required: true
+      selector:
+        number:
+          min: 1
+          max: 1440
+          step: 1
+          mode: box
+          unit_of_measurement: min
+    mode:
+      required: true
+      selector:
+        select:
+          translation_key: irrigation_mode
+          options:
+            - sequential
+            - parallel
+
+stop:
+  target:
+    entity:
+      integration: fazenda_irrigation
+      domain: sensor
