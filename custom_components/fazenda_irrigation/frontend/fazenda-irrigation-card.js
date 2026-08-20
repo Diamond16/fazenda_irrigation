@@ -1,4 +1,4 @@
-const FI_CARD_VERSION = "0.2.0";
+const FI_CARD_VERSION = "0.2.1";
 
 class FazendaIrrigationCard extends HTMLElement {
   constructor() {

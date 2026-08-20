@@ -32,7 +32,7 @@ from .controller import IrrigationController
 
 PLATFORMS = [Platform.SENSOR]
 CARD_PATH = f"/{DOMAIN}/fazenda-irrigation-card.js"
-CARD_URL = f"{CARD_PATH}?v=0.2.0"
+CARD_URL = f"{CARD_PATH}?v=0.2.1"
 CARD_FILE = Path(__file__).parent / "frontend" / "fazenda-irrigation-card.js"
 DATA_CLAIMS = "entity_claims"
 

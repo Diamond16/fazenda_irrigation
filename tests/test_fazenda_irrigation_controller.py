@@ -236,6 +236,17 @@ class ControllerTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("switch.zone", controller._zone_duty_used_seconds)
         self.assertNotIn("switch.zone", controller._zone_cooldown_until)
 
+    def test_interrupted_session_marks_full_recovery_cooldown(self) -> None:
+        controller, _clock, _events = _make_controller()
+
+        controller._mark_recovery_cooldown(["switch.zone", "switch.unknown"])
+
+        self.assertEqual(controller._zone_duty_used_seconds["switch.zone"], 60)
+        _used, capacity, delay = controller._thermal_limits(controller.zones[0])
+        self.assertEqual(capacity, 60)
+        self.assertGreaterEqual(delay, 59)
+        self.assertNotIn("switch.unknown", controller._zone_duty_used_seconds)
+
     async def test_emergency_close_is_sent_for_unavailable_entity(self) -> None:
         controller, _clock, _events = _make_controller()
         calls: list[tuple[str, str, dict, bool]] = []

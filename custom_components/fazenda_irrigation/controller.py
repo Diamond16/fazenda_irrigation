@@ -128,6 +128,7 @@ class IrrigationController:
             source_error = await self._async_close_source_safely(force=True)
             if source_error:
                 cleanup_errors.append(source_error)
+            self._mark_recovery_cooldown(zone_ids)
             if cleanup_errors:
                 self.status = STATUS_ERROR
                 self.last_result = "recovery_failed"
@@ -196,6 +197,10 @@ class IrrigationController:
         """Validate and start a new irrigation session."""
         if self._task and not self._task.done():
             raise ServiceValidationError("Irrigation is already running")
+        if self.status == STATUS_ERROR:
+            raise ServiceValidationError(
+                "Reset the controller with Stop before starting a new session"
+            )
         if not zone_ids:
             raise ServiceValidationError("Select at least one irrigation zone")
         configured_ids = {zone["entity_id"] for zone in self.zones}
@@ -473,6 +478,21 @@ class IrrigationController:
             dt_util.now() + timedelta(minutes=int(zone["cooldown_minutes"]))
         ).isoformat()
 
+    def _mark_recovery_cooldown(self, entity_ids: list[str]) -> None:
+        """Assume the worst-case duty after an interrupted active session."""
+        now = dt_util.now()
+        zones_by_id = {zone["entity_id"]: zone for zone in self.zones}
+        for entity_id in entity_ids:
+            zone = zones_by_id.get(entity_id)
+            if zone is None:
+                continue
+            self._zone_duty_used_seconds[entity_id] = float(
+                int(zone["max_on_minutes"]) * 60
+            )
+            self._zone_cooldown_until[entity_id] = (
+                now + timedelta(minutes=int(zone["cooldown_minutes"]))
+            ).isoformat()
+
     def _set_phase_after_segment(self, entity_id: str, done: bool) -> None:
         runtime = self._zone_runtime[entity_id]
         runtime["phase_started_at"] = None
@@ -512,6 +532,7 @@ class IrrigationController:
             await self._task
             return
 
+        was_error = self.status == STATUS_ERROR
         self.status = STATUS_STOPPING
         self._notify()
         cleanup_errors = await self._async_turn_off_many(
@@ -528,6 +549,8 @@ class IrrigationController:
             self.status = STATUS_IDLE
             self.last_result = "emergency_stop"
             self.error = None
+            if was_error:
+                self._mark_recovery_cooldown([zone["entity_id"] for zone in self.zones])
         await self._store.async_save(self._storage_payload(active=False))
         self._notify()
 
