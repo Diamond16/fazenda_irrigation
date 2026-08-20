@@ -1,5 +1,9 @@
 # Fazenda Irrigation
 
+<p align="center">
+  <img src="custom_components/fazenda_irrigation/brand/icon.png" width="128" alt="Fazenda Irrigation icon">
+</p>
+
 A configurable manual irrigation controller and Lovelace card for Home
 Assistant. Choose any set of zones, watering time, and either sequential or
 simultaneous operation. The controller automatically inserts valve cooldowns
