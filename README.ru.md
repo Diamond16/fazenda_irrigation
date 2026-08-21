@@ -42,13 +42,13 @@ Fazenda Irrigation — компонент ручного управления п
 ### Полив не запущен
 
 <p align="center">
-  <img src="docs/images/card-idle.png" width="480" alt="Карточка Fazenda Irrigation перед запуском полива">
+  <img src="docs/images/card-idle-ru.png" width="480" alt="Карточка Fazenda Irrigation перед запуском полива">
 </p>
 
 ### Полив выполняется
 
 <p align="center">
-  <img src="docs/images/card-running.png" width="480" alt="Карточка Fazenda Irrigation во время полива">
+  <img src="docs/images/card-running-ru.png" width="480" alt="Карточка Fazenda Irrigation во время полива">
 </p>
 
 Fazenda Irrigation не рассчитывает потребность в воде по погоде или влажности
