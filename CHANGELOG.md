@@ -1,19 +1,45 @@
 # Changelog
 
-All notable changes to this project will be documented in this file. The
-format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
-versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+Notable changes are documented here using
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
+[Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-08-21
+
+### Added
+
+- Visual card editor for the displayed tank, visible zone subset/order,
+  duration buttons, custom slider range, and up to two additional sensors per
+  zone.
+- Browser-local persistence for zone selection, watering mode, and custom
+  duration.
+- Live session plan, progress, next-zone start time, and last-run information.
+
+### Changed
+
+- Sequential actions preserve the requested zone order.
+- Simultaneous plans present zones as a parallel group.
+- Integration, card, and safety configuration remain separate: the card
+  cannot weaken controller limits.
+
+### Fixed
+
+- Reliable full-row zone selection and draggable custom-duration input.
+- Correct active-zone status when the physical entity changes before the
+  controller sensor update.
+- Emergency cleanup, restart cooldown, and thermal accounting after an
+  interrupted or failed close.
+- Card configuration remains complete when switching between visual and YAML
+  editors.
+- The card does not offer an enabled Start button while controller cleanup is
+  in an error state.
+
 ### Documentation
 
-- Added detailed HACS and manual installation, updating, verification, and
-  removal instructions.
-- Documented every controller and card option, thermal-cycle behavior, actions,
-  recovery, troubleshooting, and safety limitations.
-- Added a capability comparison with Irrigation Unlimited, Smart Irrigation,
-  and IrrigationProgram to clarify Fazenda Irrigation's manual-session focus.
+- Added concise HACS/manual installation, configuration, usage, safety, and
+  troubleshooting guides.
 
 ## [0.2.1] - 2026-08-21
 
@@ -28,17 +54,12 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
-- Config-flow based irrigation controller with an arbitrary number of zones.
-- Sequential and simultaneous operation with automatic valve cooldowns.
-- Cross-session and restart-persistent thermal duty accounting.
-- Optional tank-level interlock and water-source control.
-- Bundled responsive Lovelace card with duration presets, draggable custom
-  duration slider, live progress, finish estimate, and run history.
-- Recovery cleanup after an interrupted Home Assistant run.
-- English and Russian setup translations.
-- Python scheduling, validation, controller safety, and JavaScript behavior
-  tests.
+- Config-flow based controller with arbitrary `switch` or `valve` zones.
+- Sequential and simultaneous operation with automatic cooldowns.
+- Persistent thermal accounting, optional tank interlock, optional source
+  control, bundled card, actions, recovery, and tests.
 
-[Unreleased]: https://github.com/Diamond16/fazenda_irrigation/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/Diamond16/fazenda_irrigation/compare/v0.9.1...HEAD
+[0.9.1]: https://github.com/Diamond16/fazenda_irrigation/compare/v0.2.1...v0.9.1
 [0.2.1]: https://github.com/Diamond16/fazenda_irrigation/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/Diamond16/fazenda_irrigation/releases/tag/v0.2.0

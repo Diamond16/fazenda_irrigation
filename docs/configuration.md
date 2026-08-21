@@ -1,224 +1,134 @@
 # Configuration
 
-Fazenda Irrigation is configured entirely in the Home Assistant UI. One config
-entry represents one irrigation controller and creates one controller sensor.
+Fazenda Irrigation is configured in **Settings → Devices & services**. One
+config entry creates one irrigation controller sensor.
 
-## Safety and equipment
+## Controller settings
 
-The controller sends ordinary Home Assistant open/close or on/off commands. It
-cannot detect a welded relay, blocked valve, broken cable, or command that did
-not reach a disconnected device.
-
-Before configuring it:
-
-- Prefer normally closed irrigation valves, so loss of power closes the water.
-- Follow the valve manufacturer's maximum energized time and cooling guidance.
-- Use appropriately rated relays, power supplies, fuses, wiring, and flyback
-  protection for inductive loads.
-- Keep independent protection where overheating or flooding could cause harm.
-- Confirm that `off` really closes every `switch` zone and `close_valve` closes
-  every `valve` zone.
-- Avoid giving users separate manual controls for the same physical valves.
-
-Thermal accounting covers only sessions started through Fazenda Irrigation.
-Operating an underlying entity directly, from another automation, or from
-another integration bypasses that accounting.
-
-## Create a controller
-
-Open **Settings → Devices & services → Add integration**, search for **Fazenda
-Irrigation**, and complete the form.
-
-### Controller and zones
-
-| Field | Required | Default | Description |
-| --- | --- | --- | --- |
-| Controller name | Yes | — | Device/config-entry name, for example `Garden irrigation`. |
-| Irrigation zones | Yes | — | One or more `switch` or `valve` entities. Their order is also the initial sequential order. |
-| Zone names | No | Entity names | One non-empty display name per selected zone, one per line and in the same order. Leave the entire field empty to use Home Assistant friendly names. |
-
-There is no fixed maximum or hardcoded zone count. Practical limits are the
-Home Assistant host, the underlying devices, network latency, and the capacity
-of the water system.
-
-All selected zones must be available and closed/off when a new session starts.
-The controller rejects a session if any selected zone is `unknown`,
-`unavailable`, already on, or already open.
-
-### Duration controls
-
-| Field | Required | Default | Allowed by the form | Description |
-| --- | --- | --- | --- | --- |
-| Duration presets | Yes | `15, 30, 60, 120` | Positive whole minutes | Comma-separated quick-button values. Duplicate values are removed and values are displayed in ascending order. |
-| Minimum duration | Yes | `5` | 1–1440 min | Slider minimum. |
-| Maximum duration | Yes | `360` | 1–1440 min | Slider maximum. Must be greater than the minimum. |
-| Duration step | Yes | `5` | 1–60 min | Slider increment. The range must contain an exact whole number of steps. |
-| Default duration | Yes | `120` | 1–1440 min | Initial card selection. It must be inside the slider range and aligned to its step. |
-
-Every preset must also be inside the slider range and aligned to the step. For
-example, with minimum `5` and step `5`, `15` is valid but `12` is not.
-
-The card stores the value from **Other value** independently in the current
-browser's local storage. Selecting a preset does not overwrite that custom
-value. Different phones or browser profiles may therefore remember different
-custom values.
-
-### Watering scheme
-
-| Field | Default | Description |
+| Setting | Default | Purpose |
 | --- | --- | --- |
-| Default watering scheme | `Sequential` | Initial card selection: `Sequential` or `Simultaneous`. The user may change it before each session. |
+| Controller name | — | Name of the device and controller. |
+| Irrigation zones | — | One or more `switch` or `valve` entities. |
+| Zone names | Entity names | Optional names, one per line and in zone order. |
+| Duration presets | `15, 30, 60, 120` | Quick-button values in minutes. |
+| Minimum / maximum / step | `5 / 360 / 5` | Allowed duration range. |
+| Default duration | `120` | Initial duration selection. |
+| Default scheme | Sequential | Sequential or simultaneous operation. |
+| Maximum continuous valve time | `40` min | Maximum uninterrupted open time. |
+| Required valve cooldown | `10` min | Closed time required after a full duty cycle. |
+| Water level entity | None | Optional numeric tank-level entity. |
+| Minimum water level | `0` | Blocks watering below this native value; `0` disables the interlock. |
+| Water source control | None | Optional pump or master `switch`/`valve`. |
+| Water source settling time | `0` sec | Delay between opening the source and starting zones. |
 
-**Sequential** uses one zone at a time. Zones run in the configured order; if
-they need several thermal cycles, the controller returns to them round-robin.
-This is useful when the source has low pressure or flow.
+Preset and default durations must be inside the configured range and aligned to
+its step. Zone names must either be empty or contain exactly one non-empty line
+per zone.
 
-**Simultaneous** runs all selected zones independently at the same time. Each
-zone still receives its own cooling pauses. Use it only when the water supply,
-pipes, electrical supply, and relays can handle all selected zones together.
+### Watering schemes
 
-### Valve thermal limits
+**Sequential** runs one zone at a time in the selected card/action order. If a
+session needs multiple thermal cycles, the controller returns to zones in
+round-robin order. This is intended for sources with limited flow or pressure.
 
-| Field | Required | Default | Allowed by the form | Description |
-| --- | --- | --- | --- | --- |
-| Maximum continuous valve time | Yes | `40` | 1–1440 min | Maximum uninterrupted energized/open segment. |
-| Required valve cooldown | Yes | `10` | 0–1440 min | Required fully closed interval before the valve regains its complete on-time budget. |
+**Simultaneous** runs all selected zones independently. Use it only when the
+water and electrical systems support the combined load.
 
-These two values currently apply to every zone in this controller. If two
-valve types need different limits, create separate controllers and do not
-reuse a zone or source entity between them.
+### Valve cooling
 
-The requested duration is **actual open time for each zone**, not total wall
-clock time. With 120 minutes requested, a 40-minute maximum, and a 10-minute
-cooldown, a single zone follows this plan:
+The duration is actual open time **for each selected zone**. With 120 minutes
+requested, a 40-minute continuous limit, and a 10-minute cooldown, one zone
+runs:
 
 ```text
 open 40 min → closed 10 min → open 40 min → closed 10 min → open 40 min
 ```
 
-It receives 120 minutes of water and finishes after about 140 minutes. In
-sequential mode, another zone can water while the first one cools, so the
-overall plan may be shorter than adding all pauses independently. The card
-calculates and displays the expected finish using the current thermal budget.
+Cooling is not counted as watering. The remaining thermal budget is retained
+when a session is stopped or another session starts. It is also stored across
+Home Assistant restarts. After an interrupted active session, the integration
+conservatively requires a full cooldown.
 
-If a new session starts before a valve has cooled fully, the remaining budget
-and delay are carried into the new plan. Thermal state is stored across Home
-Assistant restarts. After recovering an interrupted active session, the
-controller conservatively assumes that every selected valve used its full
-budget and requires a complete cooldown.
+The thermal settings apply to every zone in a controller. Use separate,
+non-overlapping controllers if valve types require different limits.
 
-### Optional tank-level interlock
+### Tank and water source
 
-| Field | Required | Default | Description |
-| --- | --- | --- | --- |
-| Water level entity | No | None | A numeric `sensor`, `input_number`, or `number`. |
-| Minimum water level | Yes | `0` | Compared with the entity's numeric state in its native unit. `0` disables blocking. |
+The optional tank threshold compares the entity's raw numeric state in its
+native unit. The integration does not convert percent, litres, distance, or an
+inverted level reading. If enabled, the interlock is checked before and during
+watering.
 
-Examples of native units are percent, litres, or centimetres. Fazenda
-Irrigation does not convert units, estimate volume, or calibrate the sensor.
+The optional source opens before the zones and closes after them. Normal
+cleanup closes it only if Fazenda Irrigation opened it; **Stop** and restart
+recovery force an emergency close.
 
-When the threshold is enabled, watering cannot start if the sensor is missing,
-unavailable, non-numeric, or below the minimum. During an active session the
-controller listens for level changes and stops the session if the threshold is
-crossed.
+## Card settings
 
-### Optional water-source control
+Add **Fazenda Irrigation** from the dashboard card picker. Its visual editor
+supports:
 
-| Field | Required | Default | Description |
-| --- | --- | --- | --- |
-| Water source control | No | None | Upstream `switch` or `valve`, such as a pump, master valve, or irrigation supply. It cannot also be a zone. |
-| Water source settling time | Yes | `0` sec | Delay after opening the source and before the first zone begins. Allowed range: 0–600 seconds. |
+- card title and optional tank entity for display;
+- visible zone subset and drag-and-drop order;
+- up to two `sensor` or `binary_sensor` entities per zone;
+- ordered duration buttons; and
+- minimum, maximum, and step for **Other value**.
 
-At session start, the source is opened before the zones. In normal cleanup it
-is closed only if Fazenda Irrigation opened it. The explicit **Stop** action and
-restart recovery force a close as an emergency cleanup.
+The displayed tank is independent of the controller's safety interlock. Card
+settings cannot weaken controller limits.
 
-Do not choose a tank-fill valve unless opening that entity really supplies the
-irrigation line. Tank filling and tank-level maintenance are outside the scope
-of this integration.
-
-## Example five-zone controller
-
-Assume Home Assistant already has these entities:
-
-```text
-switch.greenhouse_irrigation
-valve.bed_1
-valve.bed_2
-valve.bed_3
-valve.bed_4
-sensor.irrigation_tank_level
-switch.irrigation_pump
-```
-
-One possible form configuration is:
-
-| Field | Example value |
-| --- | --- |
-| Controller name | `Garden irrigation` |
-| Irrigation zones | the five zone entities above |
-| Zone names | `Greenhouse`, then `Bed 1` through `Bed 4`, one per line |
-| Duration presets | `15, 30, 60, 120` |
-| Minimum / maximum / step | `5` / `360` / `5` |
-| Default duration | `120` |
-| Default scheme | `Sequential` |
-| Maximum continuous valve time | the valve manufacturer's safe value, for example `40` |
-| Required cooldown | the manufacturer's required value, for example `10` |
-| Water level entity | `sensor.irrigation_tank_level` |
-| Minimum water level | for example `15` if the sensor reports percent |
-| Water source control | `switch.irrigation_pump` |
-| Settling time | for example `5` seconds |
-
-The values `40`, `10`, `15`, and `5` are examples, not hardware
-recommendations. Use values appropriate for the actual equipment.
-
-## Card configuration
-
-The integration registers the bundled `fazenda-irrigation-card` resource
-automatically. Add a **Manual** card in a dashboard:
+Equivalent YAML:
 
 ```yaml
 type: custom:fazenda-irrigation-card
-entity: sensor.garden_irrigation
 title: Irrigation
-```
-
-| Card option | Required | Description |
-| --- | --- | --- |
-| `type` | Yes | Must be `custom:fazenda-irrigation-card`. |
-| `entity` | Yes | Controller sensor created by this integration. |
-| `title` | No | Card heading. Defaults to the controller/entity friendly name. |
-| `default_zones` | No | List of configured zone entity IDs initially selected in this browser. If omitted, all zones are initially selected. |
-
-Example with only two zones selected by default:
-
-```yaml
-type: custom:fazenda-irrigation-card
-entity: sensor.garden_irrigation
-title: Garden irrigation
-default_zones:
-  - valve.bed_1
+tank_entity: sensor.irrigation_tank_level
+zones:
   - valve.bed_2
+  - valve.bed_1
+zone_sensors:
+  valve.bed_2:
+    - sensor.bed_2_soil_moisture
+  valve.bed_1:
+    - sensor.greenhouse_temperature
+    - sensor.greenhouse_humidity
+duration_presets: [15, 30, 60, 120]
+custom_duration_min: 5
+custom_duration_max: 360
+custom_duration_step: 5
 ```
 
-`default_zones` affects only the initial card selection. It does not change the
-controller configuration or prevent the user or an automation from selecting
-other configured zones.
+| Option | Description |
+| --- | --- |
+| `type` | Must be `custom:fazenda-irrigation-card`. |
+| `title` | Optional heading. |
+| `tank_entity` | Optional numeric entity shown in the header. |
+| `zones` | Ordered subset of controller zones. This is the sequential execution order. |
+| `zone_sensors` | One or two additional sensor IDs per zone. Selecting a value opens Home Assistant's standard entity details/history. |
+| `duration_presets` | Ordered quick durations compatible with controller limits. |
+| `custom_duration_min` / `max` / `step` | Range for **Other value**, constrained by controller limits. |
+| `entity` | Optional YAML-only controller override, useful only with multiple controllers. |
 
-## Edit an existing controller
+The card normally finds the controller automatically. All visible zones are
+selected initially; later zone selection, watering mode, and the custom slider
+value are remembered in that browser. Multiple cards may expose different zone
+subsets and orders.
 
-1. Open **Settings → Devices & services**.
-2. Find **Fazenda Irrigation**.
-3. Select **Configure** on the relevant entry.
-4. Save the changed options.
+## Edit or add controllers
 
-The config entry reloads automatically. Do not edit `.storage` files or the
-controller sensor attributes by hand.
+Use **Settings → Devices & services → Fazenda Irrigation → Configure**. Changes
+reload the entry automatically.
 
-## Multiple controllers
+Multiple controllers are supported, but a zone or water-source entity may
+belong to only one loaded controller. Overlap is rejected to prevent conflicting
+commands and incomplete thermal accounting.
 
-You may create multiple config entries, for example for valve groups with
-different thermal requirements. One physical zone or water-source entity may
-be claimed by only one loaded Fazenda Irrigation controller. The integration
-rejects overlapping entries so two controllers cannot independently command
-or account for the same device.
+## Equipment safety
+
+Prefer normally closed valves and correctly rated relays, power supplies,
+fuses, wiring, and flyback protection. Confirm that `off` or `close_valve`
+really closes each device. Direct control of underlying entities bypasses
+Fazenda Irrigation's thermal accounting.
+
+Software cannot confirm that a physical relay or valve followed a command. Keep
+independent protection wherever overheating or flooding could cause harm.

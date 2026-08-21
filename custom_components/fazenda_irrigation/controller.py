@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Callable
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
@@ -70,6 +70,7 @@ class IrrigationController:
         self._stop_event = asyncio.Event()
         self._abort_error: str | None = None
         self._zone_runtime: dict[str, dict[str, Any]] = {}
+        self._zone_start_queue: dict[str, list[str]] = {}
         self._zone_last_started_at: dict[str, str] = {}
         self._zone_duty_used_seconds: dict[str, float] = {}
         self._zone_cooldown_until: dict[str, str] = {}
@@ -230,7 +231,7 @@ class IrrigationController:
         self._validate_tank_level()
         self._validate_zone_states(zone_ids)
 
-        selected = [zone for zone in self.zones if zone["entity_id"] in zone_ids]
+        selected = self._ordered_selected_zones(zone_ids)
         specs: list[ZoneSpec] = []
         for zone in selected:
             _, initial_capacity, initial_delay = self._thermal_limits(zone)
@@ -272,9 +273,11 @@ class IrrigationController:
                 "phase": "waiting",
                 "phase_started_at": None,
                 "phase_ends_at": None,
+                "next_start_at": None,
             }
             for zone in specs
         }
+        self._set_runtime_schedule(plan, now)
         self._stop_event = asyncio.Event()
         self.status = STATUS_RUNNING
         try:
@@ -288,6 +291,11 @@ class IrrigationController:
         self._task = self.hass.async_create_task(
             self._async_run(plan), f"{DOMAIN}_{self.entry.entry_id}"
         )
+
+    def _ordered_selected_zones(self, zone_ids: list[str]) -> list[dict[str, Any]]:
+        """Return configured zones in the order requested by the caller."""
+        configured = {zone["entity_id"]: zone for zone in self.zones}
+        return [configured[entity_id] for entity_id in zone_ids]
 
     def _validate_zone_states(self, zone_ids: list[str]) -> None:
         for entity_id in zone_ids:
@@ -369,7 +377,27 @@ class IrrigationController:
                     )
                 runtime["phase_started_at"] = None
                 runtime["phase_ends_at"] = None
+                runtime["next_start_at"] = None
+            self._zone_start_queue = {}
             self._notify()
+
+    def _set_runtime_schedule(self, plan: IrrigationPlan, started_at: datetime) -> None:
+        """Attach planned absolute start times to each runtime zone."""
+        self._zone_start_queue = {}
+        for entity_id, runtime in self._zone_runtime.items():
+            starts = [
+                (started_at + timedelta(seconds=segment.start_offset)).isoformat()
+                for segment in plan.for_zone(entity_id)
+            ]
+            self._zone_start_queue[entity_id] = starts
+            runtime["next_start_at"] = starts[0] if starts else None
+
+    def _advance_runtime_schedule(self, entity_id: str) -> None:
+        """Advance a zone countdown from the current segment to the next one."""
+        starts = self._zone_start_queue.get(entity_id, [])
+        if starts:
+            starts.pop(0)
+        self._zone_runtime[entity_id]["next_start_at"] = starts[0] if starts else None
 
     async def _async_run_sequential(self, plan: IrrigationPlan) -> None:
         """Run the planned round-robin order with no valve overlap."""
@@ -418,6 +446,7 @@ class IrrigationController:
         """Open one valve, account actual runtime, and always close it."""
         entity_id = segment.entity_id
         runtime = self._zone_runtime[entity_id]
+        self._advance_runtime_schedule(entity_id)
         runtime["phase"] = "starting"
         runtime["phase_started_at"] = None
         runtime["phase_ends_at"] = None

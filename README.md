@@ -4,140 +4,110 @@
   <img src="custom_components/fazenda_irrigation/brand/icon.png" width="128" alt="Fazenda Irrigation icon">
 </p>
 
-Fazenda Irrigation is a manual, hardware-independent irrigation controller for
-Home Assistant. Select the zones, actual watering time per zone, and either
-sequential or simultaneous operation. The controller handles mandatory valve
-cooldowns and still delivers the requested valve-open time.
+Fazenda Irrigation is a manual irrigation controller for Home Assistant. You
+select the zones, actual watering time per zone, and sequential or simultaneous
+operation. The integration observes the configured valve duty cycle and adds
+cooling pauses without subtracting them from the requested watering time.
 
-It is deliberately not a seasonal scheduler or a weather-based runtime
-calculator. It is intended for situations where a person decides *what needs
-watering today*, but should not have to calculate valve duty cycles or the
-resulting finish time.
+It is intended for watering that changes with season, weather, and planting,
+where maintaining a recurring schedule is less convenient than starting a
+well-defined session when needed.
 
-## Highlights
+## Features
 
-- Any number of `switch` or `valve` entities; no vendor-specific hardware and
-  no hardcoded zone count.
-- Sequential round-robin or simultaneous watering.
-- Configurable duration presets and a separate draggable duration slider.
-- Configurable maximum continuous on-time and mandatory cooldown.
-- Exact requested valve-open time per zone; cooling pauses are not counted as
-  watering.
-- Thermal duty tracking across stops, new sessions, and Home Assistant
-  restarts.
-- Optional tank-level interlock and optional upstream water-source control.
-- Bundled responsive Lovelace card with a plan, estimated finish, live
-  progress, and last-run times.
-- UI-based configuration; no integration YAML is required.
-- English and Russian integration setup screens.
+- Any number of Home Assistant `switch` or `valve` zones, with no
+  vendor-specific hardware.
+- Sequential round-robin watering for low-pressure sources, or simultaneous
+  watering when the installation supports it.
+- Configurable maximum continuous valve time and mandatory cooldown, retained
+  across stops, sessions, and Home Assistant restarts.
+- Configurable duration buttons and a separate custom-duration slider.
+- Optional numeric tank-level interlock and optional pump or master-valve
+  control.
+- Bundled Lovelace card with zone selection, finish estimate, live progress,
+  and a visual editor.
+- Card settings for the displayed tank, zone subset and order, up to two
+  additional sensors per zone, duration buttons, and custom slider range.
+- Home Assistant actions for automations; no integration YAML is required.
 
-## When to choose it
+Fazenda Irrigation does not calculate watering demand from weather or soil
+moisture and does not create recurring schedules. Projects such as
+[Irrigation Unlimited](https://github.com/rgc99/irrigation_unlimited),
+[Smart Irrigation](https://github.com/altmenorg/HAsmartirrigation), and
+[IrrigationProgram](https://github.com/petergridge/Irrigation-V5) are better
+suited to those broader workflows.
 
-Choose Fazenda Irrigation when watering decisions depend on what is currently
-planted, the season, or a visual inspection, and you want a simple **select →
-set duration → start** workflow with automatic valve protection.
-
-Other projects solve broader but different problems:
-
-| Project | Primary model | Key difference from Fazenda Irrigation |
-| --- | --- | --- |
-| [Irrigation Unlimited](https://github.com/rgc99/irrigation_unlimited) | Controllers, schedules, sequences, calendar/sun/cron rules, history and adjustments | Much more capable autonomous scheduling. Fazenda is smaller, manually initiated, and has a bundled card plus persistent valve thermal accounting. |
-| [Smart Irrigation](https://github.com/altmenorg/HAsmartirrigation) | Weather, evapotranspiration, precipitation and moisture-bucket based runtime calculation | Decides *how long* watering should run from environmental data. Fazenda intentionally lets the user choose the duration and focuses on safe execution. |
-| [IrrigationProgram](https://github.com/petergridge/Irrigation-V5) | UI-configured recurring programs with pumps, rain/flow inputs, repeats and zone groups | A full irrigation program engine. Fazenda omits calendars and most hydraulic automation in exchange for a shorter setup and an on-demand UI. |
-
-See [the detailed comparison](docs/comparison.md) for capabilities,
-limitations, and guidance on combining these approaches.
-
-## Installation with HACS
-
-Fazenda Irrigation is currently installed as a HACS custom repository.
+## Install with HACS
 
 [![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=Diamond16&repository=fazenda_irrigation&category=integration)
 
-1. Open **HACS** in Home Assistant.
-2. Open the three-dot menu in the upper-right corner and select
-   **Custom repositories**.
-3. Enter `https://github.com/Diamond16/fazenda_irrigation`, select
-   **Integration**, and select **Add**.
-4. Open **Fazenda Irrigation**, select **Download**, and choose the latest
-   release.
-5. Restart Home Assistant when HACS reports **Pending restart**.
-6. Open **Settings → Devices & services → Add integration**, search for
+1. In **HACS → Custom repositories**, add
+   `https://github.com/Diamond16/fazenda_irrigation` as an **Integration**.
+2. Open **Fazenda Irrigation**, select **Download**, and restart Home Assistant.
+3. Open **Settings → Devices & services → Add integration**, search for
    **Fazenda Irrigation**, and create a controller.
 
-The integration installs into
-`<Home Assistant config>/custom_components/fazenda_irrigation`. The bundled
-card is registered automatically when the integration loads; do not add a
-Lovelace resource manually.
+The card is registered by the integration; do not add a Lovelace JavaScript
+resource manually. See [Installation](docs/installation.md) for manual install,
+updates, and removal.
 
-Read the [complete installation guide](docs/installation.md) for prerequisites,
-manual installation, updates, verification, and removal.
+## Configure the controller
 
-## Quick configuration
+Select the zone entities and set:
 
-Before adding the controller, create or identify the Home Assistant `switch`
-or `valve` entities that physically control the irrigation zones. Then provide:
+- quick durations and the allowed custom-duration range;
+- the default sequential or simultaneous mode;
+- the valve's maximum continuous energized time and required cooldown;
+- optionally, a tank-level sensor and minimum level; and
+- optionally, a pump/master valve and its settling delay.
 
-1. A controller name and one or more zone entities.
-2. Optional display names in the same order as the selected zones.
-3. Quick duration presets and the custom-duration slider range.
-4. The default watering mode.
-5. The valve's maximum continuous energized time and required closed cooldown.
-6. Optionally, a tank-level entity and/or an upstream water-source entity.
+The defaults are 15, 30, 60, and 120 minute buttons; a 5–360 minute range in
+5-minute steps; sequential operation; 40 minutes maximum continuous operation;
+and 10 minutes cooldown. Replace the thermal defaults with values suitable for
+your actual valves.
 
-The defaults provide buttons for 15, 30, 60, and 120 minutes, a 5–360 minute
-slider in 5-minute steps, sequential watering, 40 minutes maximum continuous
-on-time, and 10 minutes cooldown.
-
-See [Configuration](docs/configuration.md) for every field, validation rule,
-worked cooldown examples, optional equipment, and multiple-controller rules.
+See [Configuration](docs/configuration.md) for all controller and card options.
 
 ## Add the card
 
-Add a **Manual** card to a dashboard:
+Add **Fazenda Irrigation** from the dashboard card picker. The visual editor
+provides the normal card settings. Equivalent YAML:
 
 ```yaml
 type: custom:fazenda-irrigation-card
-entity: sensor.your_irrigation_controller
 title: Irrigation
+tank_entity: sensor.irrigation_tank_level
+zones:
+  - switch.greenhouse_irrigation
+  - valve.bed_1
+zone_sensors:
+  switch.greenhouse_irrigation:
+    - sensor.greenhouse_temperature
+    - sensor.greenhouse_humidity
+duration_presets: [15, 30, 60, 120]
+custom_duration_min: 5
+custom_duration_max: 360
+custom_duration_step: 5
 ```
 
-Replace the example entity with the controller sensor created by the
-integration. Find it under **Settings → Devices & services → Fazenda
-Irrigation → Devices**.
+The card finds the controller automatically. It initially selects all visible
+zones and then remembers zone selection and watering mode in that browser.
 
-For card options, daily use, actions, and automation examples, see
-[Usage](docs/usage.md). If something does not load or start, use the
-[Troubleshooting guide](docs/troubleshooting.md).
+See [Usage](docs/usage.md) for starting sessions and automation actions, or
+[Troubleshooting](docs/troubleshooting.md) if installation or start fails.
 
 ## Safety
 
-Fazenda Irrigation is a software coordinator, not a hardware safety device.
+This software cannot detect a welded relay, blocked valve, broken cable, or a
+command that never reaches an unavailable device. Thermal accounting covers
+only sessions started through Fazenda Irrigation; direct control of the
+underlying entities bypasses it.
 
-- Duty-cycle protection only accounts for sessions started through Fazenda
-  Irrigation. Directly operating an underlying zone entity bypasses accounting.
-- Use normally closed valves and suitable fuses, power supplies, wiring,
-  flyback protection, and independent thermal protection where required.
-- A failed relay, disconnected device, network outage, or Home Assistant crash
-  can prevent a software close command from reaching the valve.
-- Test stop, restart recovery, and each relevant failure mode while someone is
-  present before relying on unattended operation.
-
-Read the full [safety and equipment guidance](docs/configuration.md#safety-and-equipment).
-
-## Documentation
-
-- [Installation and updates](docs/installation.md)
-- [Controller and card configuration](docs/configuration.md)
-- [Using the card, actions, and automations](docs/usage.md)
-- [Troubleshooting](docs/troubleshooting.md)
-- [Comparison with other irrigation projects](docs/comparison.md)
-- [Contributing](CONTRIBUTING.md)
-- [Changelog](CHANGELOG.md)
+Use normally closed valves, correctly rated electrical protection, and any
+independent protection required by the installation. Test stop and restart
+recovery while someone is present before relying on unattended operation.
 
 ## Development
-
-Run the local checks:
 
 ```bash
 python -m unittest discover -s tests -v
@@ -147,8 +117,4 @@ python -m compileall -q custom_components/fazenda_irrigation
 node tests/test_fazenda_irrigation_card.mjs
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution and release checks.
-
-## License
-
-[MIT](LICENSE)
+See [CONTRIBUTING.md](CONTRIBUTING.md). Licensed under [MIT](LICENSE).

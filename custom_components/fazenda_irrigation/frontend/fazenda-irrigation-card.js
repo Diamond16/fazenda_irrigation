@@ -1,4 +1,37 @@
-const FI_CARD_VERSION = "0.2.1";
+const FI_CARD_VERSION = "0.9.1";
+
+function normalizeZoneSensors(value) {
+  if (value === undefined) return {};
+  if (!value || Array.isArray(value) || typeof value !== "object") {
+    throw new Error("zone_sensors должен быть объектом");
+  }
+  const normalized = {};
+  for (const [zoneEntityId, sensors] of Object.entries(value)) {
+    if (!Array.isArray(sensors)) {
+      throw new Error(`zone_sensors.${zoneEntityId} должен быть списком`);
+    }
+    if (sensors.length > 2) {
+      throw new Error(`Для зоны ${zoneEntityId} можно указать не более двух датчиков`);
+    }
+    const entityIds = [...new Set(sensors.filter((entityId) => typeof entityId === "string" && entityId))];
+    if (entityIds.length) normalized[zoneEntityId] = entityIds;
+  }
+  return normalized;
+}
+
+function findIrrigationEntity(hass, preferred) {
+  const isController = (state) =>
+    Array.isArray(state?.attributes?.zones) &&
+    state?.attributes?.entry_id &&
+    state?.attributes?.duration_min !== undefined &&
+    state?.attributes?.duration_max !== undefined;
+  if (preferred && isController(hass?.states?.[preferred])) return preferred;
+  return (
+    Object.entries(hass?.states || {}).find(([, state]) =>
+      isController(state)
+    )?.[0] || preferred || null
+  );
+}
 
 class FazendaIrrigationCard extends HTMLElement {
   constructor() {
@@ -17,12 +50,26 @@ class FazendaIrrigationCard extends HTMLElement {
   }
 
   static getStubConfig() {
-    return { entity: "sensor.fazenda_irrigation" };
+    return {};
+  }
+
+  static getConfigElement() {
+    return document.createElement("fazenda-irrigation-card-editor");
   }
 
   setConfig(config) {
-    if (!config?.entity) throw new Error("Укажите entity контроллера полива");
-    this._config = config;
+    for (const key of ["zones", "duration_presets"]) {
+      if (config[key] !== undefined && !Array.isArray(config[key])) {
+        throw new Error(`${key} должен быть списком`);
+      }
+    }
+    this._config = {
+      ...config,
+      ...(config.zone_sensors === undefined
+        ? {}
+        : { zone_sensors: normalizeZoneSensors(config.zone_sensors) }),
+    };
+    this._initializedFor = null;
     this._renderFingerprint = null;
   }
 
@@ -49,38 +96,80 @@ class FazendaIrrigationCard extends HTMLElement {
   }
 
   _stateObj() {
-    return this._hass?.states?.[this._config?.entity];
+    const entityId = findIrrigationEntity(this._hass, this._config?.entity);
+    return entityId ? this._hass?.states?.[entityId] : null;
+  }
+
+  _controllerEntity() {
+    return findIrrigationEntity(this._hass, this._config?.entity);
   }
 
   _fingerprint() {
     const stateObj = this._stateObj();
-    if (!stateObj) return `${this._config?.entity || ""}:missing`;
+    if (!stateObj) return `${this._config?.entity || "auto"}:missing`;
     const attrs = stateObj.attributes || {};
-    const zoneStates = (attrs.zones || []).map((zone) => {
+    const zoneStates = this._visibleZones(attrs).map((zone) => {
       const state = this._hass.states[zone.entity_id];
       return [zone.entity_id, state?.state, state?.last_changed];
     });
-    const tank = attrs.tank_level_entity
+    const additionalSensorStates = this._visibleZones(attrs).flatMap((zone) =>
+      this._zoneSensorIds(zone.entity_id).map((entityId) => {
+        const state = this._hass.states[entityId];
+        return [entityId, state?.state, state?.last_updated];
+      })
+    );
+    const displayTankEntity = this._config.tank_entity || attrs.tank_level_entity;
+    const displayTank = displayTankEntity
+      ? this._hass.states[displayTankEntity]
+      : null;
+    const safetyTank = attrs.tank_level_entity
       ? this._hass.states[attrs.tank_level_entity]
       : null;
     return JSON.stringify([
       stateObj.state,
       stateObj.last_updated,
       zoneStates,
-      tank?.state,
+      additionalSensorStates,
+      displayTank?.state,
+      safetyTank?.state,
     ]);
   }
 
   _normalizeDuration(value, attrs) {
-    const minimum = Number(attrs.duration_min || 5);
-    const maximum = Number(attrs.duration_max || 360);
-    const step = Number(attrs.duration_step || 5);
+    const { minimum, maximum, step } = this._customDurationBounds(attrs);
     const numeric = Math.min(maximum, Math.max(minimum, Number(value) || minimum));
     return minimum + Math.round((numeric - minimum) / step) * step;
   }
 
+  _customDurationBounds(attrs) {
+    const controller = {
+      minimum: Number(attrs.duration_min || 5),
+      maximum: Number(attrs.duration_max || 360),
+      step: Number(attrs.duration_step || 5),
+    };
+    const minimum = Number(this._config?.custom_duration_min ?? controller.minimum);
+    const maximum = Number(this._config?.custom_duration_max ?? controller.maximum);
+    const step = Number(this._config?.custom_duration_step ?? controller.step);
+    const valid =
+      Number.isInteger(minimum) &&
+      Number.isInteger(maximum) &&
+      Number.isInteger(step) &&
+      minimum >= controller.minimum &&
+      maximum <= controller.maximum &&
+      minimum < maximum &&
+      step >= controller.step &&
+      step % controller.step === 0 &&
+      (minimum - controller.minimum) % controller.step === 0 &&
+      (maximum - minimum) % step === 0;
+    return valid ? { minimum, maximum, step } : controller;
+  }
+
   _customStorageKey(attrs) {
     return `fazenda-irrigation:${attrs.entry_id}:custom-duration`;
+  }
+
+  _preferenceStorageKey(attrs, name) {
+    return `fazenda-irrigation:${attrs.entry_id}:${name}`;
   }
 
   _loadCustomDuration(attrs) {
@@ -96,6 +185,85 @@ class FazendaIrrigationCard extends HTMLElement {
     );
   }
 
+  _visibleZones(attrs) {
+    const zones = attrs.zones || [];
+    if (!Array.isArray(this._config?.zones)) return zones;
+    const byId = new Map(zones.map((zone) => [zone.entity_id, zone]));
+    return [...new Set(this._config.zones)]
+      .map((entityId) => byId.get(entityId))
+      .filter(Boolean);
+  }
+
+  _zoneSensorIds(zoneEntityId) {
+    const configured = this._config?.zone_sensors?.[zoneEntityId];
+    return Array.isArray(configured) ? configured.slice(0, 2) : [];
+  }
+
+  _formatSensorState(stateObj) {
+    if (!stateObj) return "Нет данных";
+    if (typeof this._hass?.formatEntityState === "function") {
+      try {
+        return this._hass.formatEntityState(stateObj);
+      } catch (_error) {
+        // Fall back to the raw state below.
+      }
+    }
+    if (["unknown", "unavailable"].includes(stateObj.state)) return "Недоступен";
+    const unit = stateObj.attributes?.unit_of_measurement;
+    return `${stateObj.state}${unit ? ` ${unit}` : ""}`;
+  }
+
+  _zoneSensorsMarkup(zoneEntityId) {
+    const sensors = this._zoneSensorIds(zoneEntityId);
+    if (!sensors.length) return "";
+    const buttons = sensors
+      .map((entityId) => {
+        const stateObj = this._hass.states[entityId];
+        const name = stateObj?.attributes?.friendly_name || entityId;
+        return `<button type="button" class="zone-sensor" data-more-info="${this._escape(entityId)}" title="${this._escape(name)}" aria-label="${this._escape(`${name}: ${this._formatSensorState(stateObj)}`)}"><ha-state-icon data-state-icon="${this._escape(entityId)}"></ha-state-icon><span>${this._escape(this._formatSensorState(stateObj))}</span></button>`;
+      })
+      .join("");
+    return `<div class="zone-sensors">${buttons}</div>`;
+  }
+
+  _openMoreInfo(entityId) {
+    const event = new Event("hass-more-info", {
+      bubbles: true,
+      composed: true,
+    });
+    event.detail = { entityId };
+    this.dispatchEvent(event);
+  }
+
+  _bindZoneSensors() {
+    this.shadowRoot.querySelectorAll("[data-state-icon]").forEach((icon) => {
+      icon.hass = this._hass;
+      icon.stateObj = this._hass.states[icon.dataset.stateIcon];
+    });
+    this.shadowRoot.querySelectorAll("[data-more-info]").forEach((button) => {
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        this._openMoreInfo(button.dataset.moreInfo);
+      });
+    });
+  }
+
+  _durationPresets(attrs) {
+    const configured = this._config?.duration_presets;
+    const source = Array.isArray(configured) ? configured : attrs.duration_presets || [];
+    const minimum = Number(attrs.duration_min || 1);
+    const maximum = Number(attrs.duration_max || 1440);
+    const step = Number(attrs.duration_step || 1);
+    return [...new Set(source.map(Number))].filter(
+      (value) =>
+        Number.isInteger(value) &&
+        value >= minimum &&
+        value <= maximum &&
+        (value - minimum) % step === 0
+    );
+  }
+
   _saveCustomDuration(attrs) {
     try {
       window.localStorage.setItem(
@@ -107,25 +275,72 @@ class FazendaIrrigationCard extends HTMLElement {
     }
   }
 
+  _loadSelectedZones(attrs, zoneIds) {
+    try {
+      const raw = window.localStorage.getItem(
+        this._preferenceStorageKey(attrs, "selected-zones")
+      );
+      if (!raw) return zoneIds;
+      const stored = JSON.parse(raw);
+      const selected = new Set(Array.isArray(stored.selected) ? stored.selected : []);
+      const known = new Set(Array.isArray(stored.known) ? stored.known : []);
+      return zoneIds.filter((entityId) => selected.has(entityId) || !known.has(entityId));
+    } catch (_error) {
+      return zoneIds;
+    }
+  }
+
+  _saveSelectedZones(attrs) {
+    const known = this._visibleZones(attrs).map((zone) => zone.entity_id);
+    try {
+      window.localStorage.setItem(
+        this._preferenceStorageKey(attrs, "selected-zones"),
+        JSON.stringify({ selected: [...this._selectedZones], known })
+      );
+    } catch (_error) {
+      // The in-memory choice remains usable when browser storage is disabled.
+    }
+  }
+
+  _loadMode(attrs) {
+    try {
+      const stored = window.localStorage.getItem(
+        this._preferenceStorageKey(attrs, "mode")
+      );
+      if (["sequential", "parallel"].includes(stored)) return stored;
+    } catch (_error) {
+      // Fall back to the integration default.
+    }
+    return attrs.default_mode || "sequential";
+  }
+
+  _saveMode(attrs) {
+    try {
+      window.localStorage.setItem(
+        this._preferenceStorageKey(attrs, "mode"),
+        this._mode
+      );
+    } catch (_error) {
+      // The in-memory choice remains usable when browser storage is disabled.
+    }
+  }
+
   _initialize(attrs) {
     if (this._initializedFor === attrs.entry_id) return;
-    const zoneIds = (attrs.zones || []).map((zone) => zone.entity_id);
-    const configuredDefaults = this._config.default_zones || zoneIds;
-    this._selectedZones = new Set(
-      configuredDefaults.filter((entityId) => zoneIds.includes(entityId))
-    );
+    const zoneIds = this._visibleZones(attrs).map((zone) => zone.entity_id);
+    this._selectedZones = new Set(this._loadSelectedZones(attrs, zoneIds));
     this._duration = this._normalizeDuration(
-      attrs.default_duration || attrs.duration_min || 5,
+      attrs.default_duration ?? attrs.duration_min ?? 5,
       attrs
     );
     this._customDuration = this._loadCustomDuration(attrs);
-    this._durationSource = (attrs.duration_presets || []).includes(this._duration)
+    this._durationSource = this._durationPresets(attrs).includes(this._duration)
       ? "preset"
       : "custom";
     if (this._durationSource === "custom") {
       this._customDuration = this._duration;
     }
-    this._mode = attrs.default_mode || "sequential";
+    this._mode = this._loadMode(attrs);
     this._initializedFor = attrs.entry_id;
   }
 
@@ -144,6 +359,37 @@ class FazendaIrrigationCard extends HTMLElement {
     const hours = Math.floor(value / 60);
     const rest = value % 60;
     return rest ? `${hours} ч ${rest} мин` : `${hours} ч`;
+  }
+
+  _formatRuntimeDuration(seconds) {
+    const value = Math.max(0, Math.floor(Number(seconds) || 0));
+    if (value < 60) return `${value} сек`;
+    const minutes = Math.floor(value / 60);
+    if (minutes < 60) return `${minutes} мин`;
+    const hours = Math.floor(minutes / 60);
+    const rest = minutes % 60;
+    return rest ? `${hours} ч ${rest} мин` : `${hours} ч`;
+  }
+
+  _formatCountdown(seconds) {
+    const value = Math.max(0, Math.ceil(Number(seconds) || 0));
+    if (value < 60) return `${value} сек`;
+    const minutes = Math.ceil(value / 60);
+    if (minutes < 60) return `${minutes} мин`;
+    const hours = Math.floor(minutes / 60);
+    const rest = minutes % 60;
+    return rest ? `${hours} ч ${rest} мин` : `${hours} ч`;
+  }
+
+  _planZonesMarkup(plan) {
+    if (!plan.selected.length) return "";
+    const names = plan.selected.map((zone) =>
+      this._escape(this._zoneName(zone))
+    );
+    if (this._mode === "parallel") {
+      return `<div class="order"><strong>Одновременно:</strong> ${names.join(" + ")}</div>`;
+    }
+    return `<div class="order"><strong>Порядок:</strong> ${names.join(" → ")}${plan.cycles > 1 ? ` → повторить ${plan.cycles} цикла` : ""}</div>`;
   }
 
   _formatClock(date) {
@@ -195,7 +441,7 @@ class FazendaIrrigationCard extends HTMLElement {
   }
 
   _plan(attrs) {
-    const selected = (attrs.zones || []).filter((zone) =>
+    const selected = this._visibleZones(attrs).filter((zone) =>
       this._selectedZones.has(zone.entity_id)
     );
     const required = this._duration * 60;
@@ -287,8 +533,28 @@ class FazendaIrrigationCard extends HTMLElement {
   }
 
   _tank(attrs) {
-    const entityId = attrs.tank_level_entity;
+    const entityId = this._config.tank_entity || attrs.tank_level_entity;
     if (!entityId) return null;
+    const state = this._hass.states[entityId];
+    const numeric = Number(state?.state);
+    const isSafetyEntity = entityId === attrs.tank_level_entity;
+    return {
+      entityId,
+      value: Number.isFinite(numeric) ? numeric : null,
+      text: state
+        ? `${state.state}${state.attributes.unit_of_measurement || ""}`
+        : "нет данных",
+      low:
+        isSafetyEntity &&
+        Number(attrs.min_tank_level || 0) > 0 &&
+        (!Number.isFinite(numeric) || numeric < Number(attrs.min_tank_level)),
+    };
+  }
+
+  _safetyTank(attrs) {
+    const entityId = attrs.tank_level_entity;
+    const minimum = Number(attrs.min_tank_level || 0);
+    if (!entityId || minimum <= 0) return null;
     const state = this._hass.states[entityId];
     const numeric = Number(state?.state);
     return {
@@ -297,9 +563,7 @@ class FazendaIrrigationCard extends HTMLElement {
       text: state
         ? `${state.state}${state.attributes.unit_of_measurement || ""}`
         : "нет данных",
-      low:
-        Number(attrs.min_tank_level || 0) > 0 &&
-        (!Number.isFinite(numeric) || numeric < Number(attrs.min_tank_level)),
+      low: !Number.isFinite(numeric) || numeric < minimum,
     };
   }
 
@@ -323,13 +587,21 @@ class FazendaIrrigationCard extends HTMLElement {
       .section-head { display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin-bottom:11px; }
       .zones { display:grid; gap:7px; }
       button { font:inherit; }
-      .zone,.preset,.mode-button,.start,.stop { border:1px solid var(--divider-color); background:var(--ha-card-background,var(--card-background-color)); color:var(--primary-text-color); cursor:pointer; touch-action:manipulation; user-select:none; }
-      .zone { width:100%; display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 11px; border-radius:10px; text-align:left; }
+      .zone,.preset,.mode-button,.start,.stop { border:1px solid var(--divider-color); background:var(--ha-card-background,var(--card-background-color)); color:var(--primary-text-color); touch-action:manipulation; user-select:none; }
+      .preset,.mode-button,.start,.stop { cursor:pointer; }
+      .zone { width:100%; min-height:56px; display:flex; align-items:center; gap:0; padding:9px 11px; border-radius:10px; cursor:pointer; }
+      .zone-select { display:flex; flex:0 1 auto; min-width:0; align-items:center; padding:0; border:0; background:transparent; color:var(--primary-text-color); cursor:pointer; text-align:left; touch-action:manipulation; }
       .zone[selected] { border-color:var(--primary-color); background:color-mix(in srgb,var(--primary-color) 12%,var(--ha-card-background,var(--card-background-color))); }
       .check { width:20px; height:20px; flex:0 0 auto; display:flex; align-items:center; justify-content:center; border:1px solid var(--divider-color); border-radius:50%; color:transparent; line-height:0; overflow:hidden; }
       .check ha-icon { display:block; width:14px; height:14px; --mdc-icon-size:14px; }
       .zone[selected] .check,.custom[selected] .check { border-color:var(--primary-color); background:var(--primary-color); color:var(--text-primary-color,#fff); }
-      .zone-name { font-weight:500; }
+      .zone-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:500; }
+      .zone-sensors { display:flex; flex:0 0 auto; align-items:center; gap:10px; margin-left:10px; }
+      .zone-sensor { display:flex; align-items:center; gap:4px; min-height:28px; padding:2px 0; border:0; background:transparent; color:var(--primary-text-color); cursor:pointer; font-size:12px; touch-action:manipulation; opacity:.82; }
+      .zone-sensor:hover { color:var(--primary-color); opacity:1; }
+      .zone-sensor:focus-visible { outline:2px solid var(--primary-color); outline-offset:1px; }
+      .zone-sensor ha-state-icon { width:16px; height:16px; transform:translateY(-3px); color:var(--primary-color); --mdc-icon-size:16px; }
+      .zone > .secondary { flex:0 1 auto; overflow:hidden; margin-left:auto; padding-left:10px; text-overflow:ellipsis; white-space:nowrap; }
       .duration { text-align:center; font-size:24px; font-weight:500; margin:4px 0 10px; }
       .presets { display:grid; grid-template-columns:repeat(auto-fit,minmax(68px,1fr)); gap:6px; }
       .preset { padding:8px 4px; border-radius:9px; font-size:12px; }
@@ -358,7 +630,9 @@ class FazendaIrrigationCard extends HTMLElement {
       .stop { border-color:var(--error-color); background:var(--error-color); color:#fff; }
       .start[disabled] { opacity:.5; cursor:not-allowed; }
       .run-zones { display:grid; gap:12px; }
-      .run-zone { display:grid; gap:7px; }
+      .run-zone { display:grid; gap:7px; padding:9px 10px; border:1px solid transparent; border-radius:10px; transition:background-color .2s,border-color .2s,box-shadow .2s; }
+      .run-zone[active] { border-color:var(--primary-color); background:color-mix(in srgb,var(--primary-color) 10%,var(--ha-card-background,var(--card-background-color))); box-shadow:inset 3px 0 var(--primary-color); }
+      .run-zone .zone-sensors { margin-left:0; }
       .run-head { display:flex; justify-content:space-between; gap:10px; font-size:13px; }
       .progress { height:8px; overflow:hidden; border-radius:999px; background:var(--divider-color); }
       .progress > span { display:block; height:100%; background:var(--primary-color); }
@@ -371,7 +645,7 @@ class FazendaIrrigationCard extends HTMLElement {
     if (!this.shadowRoot || !this._hass || !this._config) return;
     const stateObj = this._stateObj();
     if (!stateObj) {
-      this.shadowRoot.innerHTML = `<style>${this._styles()}</style><ha-card><div class="section error">Сущность ${this._escape(this._config.entity)} не найдена</div></ha-card>`;
+      this.shadowRoot.innerHTML = `<style>${this._styles()}</style><ha-card><div class="section error">Fazenda Irrigation не настроена или недоступна</div></ha-card>`;
       return;
     }
     const attrs = stateObj.attributes || {};
@@ -395,23 +669,29 @@ class FazendaIrrigationCard extends HTMLElement {
       : "Полив ещё не запускался";
     return `
       <div class="header">
-        <div class="title"><ha-icon icon="mdi:sprinkler-variant"></ha-icon><div><h2>${this._escape(this._config.title || "Полив")}</h2><p class="caption">${running ? "Сессия выполняется" : idleCaption}</p></div></div>
+        <div class="title"><ha-icon icon="mdi:sprinkler-variant"></ha-icon><div><h2>${this._escape(this._config.title || attrs.friendly_name || "Полив")}</h2><p class="caption">${running ? "Сессия выполняется" : idleCaption}</p></div></div>
         ${tank ? `<div class="tank ${tank.low ? "low" : ""}"><ha-icon icon="mdi:waves"></ha-icon><span>Бак <strong>${this._escape(tank.text)}</strong></span></div>` : ""}
       </div>`;
   }
 
   _renderSetup(stateObj, attrs) {
-    const zones = attrs.zones || [];
-    const presets = attrs.duration_presets || [];
+    const zones = this._visibleZones(attrs);
+    const presets = this._durationPresets(attrs);
+    const customBounds = this._customDurationBounds(attrs);
     const plan = this._plan(attrs);
     const tank = this._tank(attrs);
+    const safetyTank = this._safetyTank(attrs);
     const maxOn = Math.max(0, ...zones.map((zone) => Number(zone.max_on_minutes || 0)));
     const cooldown = Math.max(0, ...zones.map((zone) => Number(zone.cooldown_minutes || 0)));
     const selectedZonesReady = plan.selected.every((zone) => {
       const state = this._hass.states[zone.entity_id]?.state;
       return state === "off" || state === "closed";
     });
-    const canStart = plan.selected.length > 0 && selectedZonesReady && !tank?.low;
+    const canStart =
+      stateObj.state === "idle" &&
+      plan.selected.length > 0 &&
+      selectedZonesReady &&
+      !safetyTank?.low;
     const zoneButtons = zones
       .map((zone) => {
         const external = this._hass.states[zone.entity_id];
@@ -426,13 +706,13 @@ class FazendaIrrigationCard extends HTMLElement {
         const relative = !unavailable && !active && zone.last_started_at
           ? ` data-relative="${this._escape(zone.last_started_at)}"`
           : "";
-        return `<button class="zone" data-zone="${this._escape(zone.entity_id)}" data-ready="${!unavailable && !active}" ${selected ? "selected" : ""}><span class="zone-main"><span class="check"><ha-icon icon="mdi:check"></ha-icon></span><span class="zone-name">${this._escape(this._zoneName(zone))}</span></span><span class="secondary"${relative}>${status}</span></button>`;
+        return `<div class="zone" data-zone="${this._escape(zone.entity_id)}" data-ready="${!unavailable && !active}" ${selected ? "selected" : ""}><button type="button" class="zone-select" aria-label="${this._escape(this._zoneName(zone))}"><span class="zone-main"><span class="check"><ha-icon icon="mdi:check"></ha-icon></span><span class="zone-name">${this._escape(this._zoneName(zone))}</span></span></button>${this._zoneSensorsMarkup(zone.entity_id)}<span class="secondary"${relative}>${status}</span></div>`;
       })
       .join("");
     const presetButtons = presets
       .map((minutes) => `<button class="preset" data-preset="${Number(minutes)}" ${this._durationSource === "preset" && this._duration === Number(minutes) ? "selected" : ""}>${this._formatDuration(minutes)}</button>`)
       .join("");
-    const order = plan.selected.map((zone) => this._escape(this._zoneName(zone))).join(" → ");
+    const planZones = this._planZonesMarkup(plan);
     const finishLabel = plan.finish.toDateString() === new Date().toDateString() ? "Сегодня" : "Завтра";
     this.shadowRoot.innerHTML = `
       <style>${this._styles()}</style>
@@ -445,17 +725,17 @@ class FazendaIrrigationCard extends HTMLElement {
           <div class="presets">${presetButtons}</div>
           <div class="custom" ${this._durationSource === "custom" ? "selected" : ""}>
             <div class="custom-head"><label class="custom-label" for="fi-duration"><span class="check"><ha-icon icon="mdi:check"></ha-icon></span><span>Другое значение</span></label><strong class="custom-value">${this._customDuration} минут</strong></div>
-            <input id="fi-duration" type="range" min="${Number(attrs.duration_min)}" max="${Number(attrs.duration_max)}" step="${Number(attrs.duration_step)}" value="${this._customDuration}">
-            <div class="range-scale"><span>${attrs.duration_min} мин</span><span>${this._formatDuration(attrs.duration_max)}</span></div>
+            <input id="fi-duration" type="range" min="${customBounds.minimum}" max="${customBounds.maximum}" step="${customBounds.step}" value="${this._customDuration}">
+            <div class="range-scale"><span>${customBounds.minimum} мин</span><span>${this._formatDuration(customBounds.maximum)}</span></div>
           </div>
         </div>
         <div class="section"><div class="section-head"><h3>Схема</h3></div><div class="mode"><button class="mode-button" data-mode="sequential" ${this._mode === "sequential" ? "selected" : ""}>По очереди</button><button class="mode-button" data-mode="parallel" ${this._mode === "parallel" ? "selected" : ""}>Одновременно</button></div></div>
         <div class="section"><div class="section-head"><h3>План</h3><span class="secondary">С учётом охлаждения</span></div><div class="plan">
           <div class="summary-line"><span class="secondary">Завершение</span><strong>${finishLabel}, ${this._formatClock(plan.finish)}</strong></div>
           <div class="summary-line"><span class="secondary">Общее время</span><strong>${this._formatDuration(Math.ceil(plan.finishSeconds / 60))}</strong></div>
-          ${plan.selected.length ? `<div class="order"><strong>Порядок:</strong> ${order}${this._mode === "sequential" && plan.cycles > 1 ? ` → повторить ${plan.cycles} цикла` : ""}</div>` : ""}
+          ${planZones}
           <p class="warning">Каждый клапан: не более ${maxOn} минут работы, затем минимум ${cooldown} минут охлаждения.</p>
-          ${tank?.low ? `<p class="error">Недостаточный уровень воды: ${this._escape(tank.text)}.</p>` : ""}
+          ${safetyTank?.low ? `<p class="error">Защитный датчик бака не позволяет запустить полив: ${this._escape(safetyTank.text)}.</p>` : ""}
           ${stateObj.state === "error" && attrs.error ? `<p class="error">${this._escape(attrs.error)}</p>` : ""}
           ${this._error ? `<p class="error">${this._escape(this._error)}</p>` : ""}
         </div></div>
@@ -504,23 +784,31 @@ class FazendaIrrigationCard extends HTMLElement {
     this._saveCustomDuration(attrs);
   }
 
-  _toggleZone(entityId, ready) {
+  _toggleZone(entityId, ready, attrs = null) {
     if (this._selectedZones.has(entityId)) {
       this._selectedZones.delete(entityId);
+      if (attrs) this._saveSelectedZones(attrs);
       return true;
     }
     if (!ready) return false;
     this._selectedZones.add(entityId);
+    if (attrs) this._saveSelectedZones(attrs);
     return true;
   }
 
   _bindSetup() {
     const attrs = this._stateObj()?.attributes || {};
-    this.shadowRoot.querySelectorAll("[data-zone]").forEach((button) => {
-      button.addEventListener("click", (event) => {
+    this._bindZoneSensors();
+    this.shadowRoot.querySelectorAll("[data-zone]").forEach((zoneElement) => {
+      zoneElement.addEventListener("click", (event) => {
+        if (event.target.closest?.("[data-more-info]")) return;
         event.preventDefault();
-        const entityId = button.dataset.zone;
-        this._toggleZone(entityId, button.dataset.ready === "true");
+        const entityId = zoneElement.dataset.zone;
+        this._toggleZone(
+          entityId,
+          zoneElement.dataset.ready === "true",
+          attrs
+        );
         this._error = null;
         this._render();
       });
@@ -548,6 +836,7 @@ class FazendaIrrigationCard extends HTMLElement {
     this.shadowRoot.querySelectorAll("[data-mode]").forEach((button) => {
       button.addEventListener("click", () => {
         this._mode = button.dataset.mode;
+        this._saveMode(attrs);
         this._render();
       });
     });
@@ -557,9 +846,11 @@ class FazendaIrrigationCard extends HTMLElement {
   async _start() {
     try {
       this._error = null;
+      const attrs = this._stateObj()?.attributes || {};
+      const zones = this._plan(attrs).selected.map((zone) => zone.entity_id);
       await this._hass.callService("fazenda_irrigation", "start", {
-        entity_id: this._config.entity,
-        zones: [...this._selectedZones],
+        entity_id: this._controllerEntity(),
+        zones,
         duration_minutes: this._duration,
         mode: this._mode,
       });
@@ -598,13 +889,22 @@ class FazendaIrrigationCard extends HTMLElement {
     if (runtime.phase === "watering") return "Полив";
     if (runtime.phase === "cooling") {
       const seconds = Math.max(0, Math.ceil((new Date(runtime.phase_ends_at).getTime() - Date.now()) / 1000));
-      if (seconds === 0) return "Ожидает своей очереди";
+      if (seconds === 0) return this._nextStartLabel(runtime);
       return `Охлаждение — ещё ${Math.ceil(seconds / 60)} мин`;
     }
-    if (runtime.phase === "waiting") return "Ожидает своей очереди";
+    if (runtime.phase === "waiting") return this._nextStartLabel(runtime);
     if (runtime.phase === "done") return "Готово";
     if (runtime.phase === "error") return "Ошибка";
     return "Остановлено";
+  }
+
+  _nextStartLabel(runtime) {
+    if (!runtime.next_start_at) return "Ожидает своей очереди";
+    const seconds = Math.ceil(
+      (new Date(runtime.next_start_at).getTime() - Date.now()) / 1000
+    );
+    if (!Number.isFinite(seconds) || seconds <= 0) return "Включится сейчас";
+    return `Включится через ${this._formatCountdown(seconds)}`;
   }
 
   _renderRunning(stateObj, attrs) {
@@ -613,7 +913,7 @@ class FazendaIrrigationCard extends HTMLElement {
       .map((zone) => {
         const effective = this._effectiveRuntime(zone);
         const progress = this._runtimeProgress(effective);
-        return `<div class="run-zone" data-runtime-zone="${this._escape(zone.entity_id)}"><div class="run-head"><strong>${this._escape(zone.name || zone.entity_id)}</strong><span class="run-elapsed">${this._formatDuration(Math.floor(progress.delivered / 60))} / ${this._formatDuration(Math.ceil(Number(zone.required_seconds) / 60))}</span></div><div class="progress"><span style="width:${Math.max(0, Math.min(100, progress.percent))}%"></span></div><div class="run-head phase"><span class="phase-label">${this._phaseLabel(effective)}</span><span class="run-remaining">Осталось ${this._formatDuration(Math.ceil(progress.remaining / 60))}</span></div></div>`;
+        return `<div class="run-zone" data-runtime-zone="${this._escape(zone.entity_id)}" ${effective.phase === "watering" ? "active" : ""}><div class="run-head"><strong>${this._escape(zone.name || zone.entity_id)}</strong><span class="run-elapsed">${this._formatRuntimeDuration(progress.delivered)} / ${this._formatDuration(Math.ceil(Number(zone.required_seconds) / 60))}</span></div>${this._zoneSensorsMarkup(zone.entity_id)}<div class="progress"><span style="width:${Math.max(0, Math.min(100, progress.percent))}%"></span></div><div class="run-head phase"><span class="phase-label">${this._phaseLabel(effective)}</span><span class="run-remaining">Осталось ${this._formatDuration(Math.ceil(progress.remaining / 60))}</span></div></div>`;
       })
       .join("");
     const finish = attrs.estimated_finish ? new Date(attrs.estimated_finish) : null;
@@ -623,6 +923,7 @@ class FazendaIrrigationCard extends HTMLElement {
         <div class="section"><div class="section-head"><h3>${attrs.mode === "parallel" ? "Одновременный полив" : "Полив по очереди"}</h3>${finish ? `<span class="secondary">до ${this._formatClock(finish)}</span>` : ""}</div><div class="run-zones">${rows}</div>${attrs.error ? `<p class="error">${this._escape(attrs.error)}</p>` : ""}</div>
         <div class="footer"><button class="stop">Остановить</button></div>
       </ha-card>`;
+    this._bindZoneSensors();
     this.shadowRoot.querySelector(".stop")?.addEventListener("click", () => this._stop());
   }
 
@@ -635,12 +936,13 @@ class FazendaIrrigationCard extends HTMLElement {
       if (!row) return;
       const effective = this._effectiveRuntime(zone);
       const progress = this._runtimeProgress(effective);
+      row.toggleAttribute("active", effective.phase === "watering");
       const elapsed = row.querySelector(".run-elapsed");
       const bar = row.querySelector(".progress > span");
       const phase = row.querySelector(".phase-label");
       const remaining = row.querySelector(".run-remaining");
       if (elapsed) {
-        elapsed.textContent = `${this._formatDuration(Math.floor(progress.delivered / 60))} / ${this._formatDuration(Math.ceil(Number(zone.required_seconds) / 60))}`;
+        elapsed.textContent = `${this._formatRuntimeDuration(progress.delivered)} / ${this._formatDuration(Math.ceil(Number(zone.required_seconds) / 60))}`;
       }
       if (bar) bar.style.width = `${Math.max(0, Math.min(100, progress.percent))}%`;
       if (phase) phase.textContent = this._phaseLabel(effective);
@@ -653,7 +955,7 @@ class FazendaIrrigationCard extends HTMLElement {
   async _stop() {
     try {
       await this._hass.callService("fazenda_irrigation", "stop", {
-        entity_id: this._config.entity,
+        entity_id: this._controllerEntity(),
       });
     } catch (error) {
       this._error = error?.message || String(error);
@@ -672,8 +974,491 @@ class FazendaIrrigationCard extends HTMLElement {
   }
 }
 
+class FazendaIrrigationCardEditor extends HTMLElement {
+  constructor() {
+    super();
+    this.attachShadow({ mode: "open" });
+    this._config = {};
+    this._hass = null;
+    this._renderKey = null;
+  }
+
+  set hass(value) {
+    this._hass = value;
+    this.shadowRoot
+      ?.querySelectorAll("ha-entity-picker")
+      .forEach((picker) => (picker.hass = value));
+    this._renderIfNeeded();
+  }
+
+  setConfig(config) {
+    const {
+      default_zones: _defaultZones,
+      default_duration: _defaultDuration,
+      default_mode: _defaultMode,
+      ...supportedConfig
+    } = config;
+    this._config = {
+      ...supportedConfig,
+      ...(supportedConfig.zone_sensors === undefined
+        ? {}
+        : { zone_sensors: normalizeZoneSensors(supportedConfig.zone_sensors) }),
+    };
+    this._renderKey = null;
+    this._renderIfNeeded();
+  }
+
+  _escape(value) {
+    return String(value ?? "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
+  }
+
+  _controllerEntity() {
+    return findIrrigationEntity(this._hass, this._config.entity);
+  }
+
+  _controllerState() {
+    const entityId = this._controllerEntity();
+    return entityId ? this._hass?.states?.[entityId] : null;
+  }
+
+  _allowedZones() {
+    return this._controllerState()?.attributes?.zones || [];
+  }
+
+  _selectedZoneIds() {
+    const allowed = this._allowedZones().map((zone) => zone.entity_id);
+    if (!Array.isArray(this._config.zones)) return allowed;
+    return [...new Set(this._config.zones)];
+  }
+
+  _zoneName(entityId) {
+    const zone = this._allowedZones().find((item) => item.entity_id === entityId);
+    return (
+      zone?.name ||
+      this._hass?.states?.[entityId]?.attributes?.friendly_name ||
+      entityId
+    );
+  }
+
+  _zoneSensorIds(zoneEntityId) {
+    const configured = this._config.zone_sensors?.[zoneEntityId];
+    return Array.isArray(configured) ? configured.slice(0, 2) : [];
+  }
+
+  _configuredPresets() {
+    const attrs = this._controllerState()?.attributes || {};
+    const source = Array.isArray(this._config.duration_presets)
+      ? this._config.duration_presets
+      : attrs.duration_presets || [];
+    return source.join(", ");
+  }
+
+  _durationBounds() {
+    const attrs = this._controllerState()?.attributes || {};
+    return {
+      minimum: Number(attrs.duration_min || 1),
+      maximum: Number(attrs.duration_max || 1440),
+      step: Number(attrs.duration_step || 1),
+    };
+  }
+
+  _configuredCustomBounds() {
+    const { minimum, maximum, step } = this._durationBounds();
+    return {
+      minimum: Number(this._config.custom_duration_min ?? minimum),
+      maximum: Number(this._config.custom_duration_max ?? maximum),
+      step: Number(this._config.custom_duration_step ?? step),
+    };
+  }
+
+  _materializedConfig() {
+    const attrs = this._controllerState()?.attributes;
+    if (!attrs) return { ...this._config };
+    const {
+      default_zones: _defaultZones,
+      default_duration: _defaultDuration,
+      default_mode: _defaultMode,
+      ...next
+    } = this._config;
+    if (next.tank_entity === undefined && attrs.tank_level_entity) {
+      next.tank_entity = attrs.tank_level_entity;
+    }
+    if (!Array.isArray(next.zones)) {
+      next.zones = (attrs.zones || []).map((zone) => zone.entity_id);
+    }
+    if (!Array.isArray(next.duration_presets)) {
+      next.duration_presets = [...(attrs.duration_presets || [])];
+    }
+    next.custom_duration_min ??= Number(attrs.duration_min || 1);
+    next.custom_duration_max ??= Number(attrs.duration_max || 1440);
+    next.custom_duration_step ??= Number(attrs.duration_step || 1);
+    return next;
+  }
+
+  _materializeConfig() {
+    const next = this._materializedConfig();
+    if (JSON.stringify(next) === JSON.stringify(this._config)) return false;
+    this._config = next;
+    this.dispatchEvent(
+      new CustomEvent("config-changed", {
+        detail: { config: next },
+        bubbles: true,
+        composed: true,
+      })
+    );
+    return true;
+  }
+
+  _renderIfNeeded() {
+    if (!this._hass || !this.shadowRoot) return;
+    this._materializeConfig();
+    const attrs = this._controllerState()?.attributes || {};
+    const zones = this._allowedZones().map((zone) => [zone.entity_id, zone.name]);
+    const renderKey = JSON.stringify([
+      this._config,
+      zones,
+      attrs.duration_presets,
+      attrs.duration_min,
+      attrs.duration_max,
+      attrs.duration_step,
+      attrs.tank_level_entity,
+    ]);
+    if (renderKey === this._renderKey) return;
+    this._renderKey = renderKey;
+    this._render();
+  }
+
+  _emit(nextConfig) {
+    this._config = nextConfig;
+    this.dispatchEvent(
+      new CustomEvent("config-changed", {
+        detail: { config: nextConfig },
+        bubbles: true,
+        composed: true,
+      })
+    );
+    this._renderKey = null;
+    this._renderIfNeeded();
+  }
+
+  _setValue(key, value) {
+    const next = { ...this._config };
+    if (value === "" || value === undefined || value === null) delete next[key];
+    else next[key] = value;
+    this._emit(next);
+  }
+
+  _setZones(zones) {
+    const normalizedZones = [...new Set(zones)];
+    const next = { ...this._config, zones: normalizedZones };
+    const zoneSensors = Object.fromEntries(
+      Object.entries(this._config.zone_sensors || {}).filter(([zoneEntityId]) =>
+        normalizedZones.includes(zoneEntityId)
+      )
+    );
+    if (Object.keys(zoneSensors).length) next.zone_sensors = zoneSensors;
+    else delete next.zone_sensors;
+    this._emit(next);
+  }
+
+  _setZoneSensor(zoneEntityId, slot, sensorEntityId) {
+    const zoneSensors = { ...(this._config.zone_sensors || {}) };
+    const sensors = [...(zoneSensors[zoneEntityId] || [])];
+    sensors[slot] = sensorEntityId;
+    const normalized = [...new Set(sensors.filter(Boolean))].slice(0, 2);
+    if (normalized.length) zoneSensors[zoneEntityId] = normalized;
+    else delete zoneSensors[zoneEntityId];
+    const next = { ...this._config };
+    if (Object.keys(zoneSensors).length) next.zone_sensors = zoneSensors;
+    else delete next.zone_sensors;
+    this._emit(next);
+  }
+
+  _moveZone(index, offset) {
+    return this._moveZoneTo(index, index + offset);
+  }
+
+  _moveZoneTo(oldIndex, newIndex) {
+    const zones = this._selectedZoneIds();
+    if (
+      !Number.isInteger(oldIndex) ||
+      !Number.isInteger(newIndex) ||
+      oldIndex < 0 ||
+      newIndex < 0 ||
+      oldIndex >= zones.length ||
+      newIndex >= zones.length ||
+      oldIndex === newIndex
+    ) {
+      return false;
+    }
+    const [zone] = zones.splice(oldIndex, 1);
+    zones.splice(newIndex, 0, zone);
+    this._setZones(zones);
+    return true;
+  }
+
+  _parsePresetInput(value) {
+    const { minimum, maximum, step } = this._durationBounds();
+    const parts = value
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean);
+    const values = parts.map(Number);
+    const valid =
+      values.length > 0 &&
+      values.every(
+        (item) =>
+          Number.isInteger(item) &&
+          item >= minimum &&
+          item <= maximum &&
+          (item - minimum) % step === 0
+      );
+    return {
+      valid,
+      values: [...new Set(values)],
+      message: `Укажите целые минуты от ${minimum} до ${maximum} с шагом ${step}`,
+    };
+  }
+
+  _validateCustomBounds(bounds) {
+    const controller = this._durationBounds();
+    const { minimum, maximum, step } = bounds;
+    const valid =
+      Number.isInteger(minimum) &&
+      Number.isInteger(maximum) &&
+      Number.isInteger(step) &&
+      minimum >= controller.minimum &&
+      maximum <= controller.maximum &&
+      minimum < maximum &&
+      step >= controller.step &&
+      step % controller.step === 0 &&
+      (minimum - controller.minimum) % controller.step === 0 &&
+      (maximum - minimum) % step === 0;
+    return {
+      valid,
+      message: `Допустимо: от ${controller.minimum} до ${controller.maximum} минут; шаг должен быть кратен ${controller.step}`,
+    };
+  }
+
+  _render() {
+    const selected = this._selectedZoneIds();
+    const allowed = this._allowedZones();
+    const customBounds = this._configuredCustomBounds();
+    const allowedIds = new Set(allowed.map((zone) => zone.entity_id));
+    const available = allowed.filter((zone) => !selected.includes(zone.entity_id));
+    const zoneRows = selected
+      .map((entityId, index) => `
+          <div class="zone-row ${allowedIds.has(entityId) ? "" : "invalid"}" data-zone="${this._escape(entityId)}">
+            <div class="zone-handle" data-drag-handle data-index="${index}" tabindex="0" aria-label="Переместить ${this._escape(this._zoneName(entityId))}" title="Перетащить для изменения порядка">
+              <ha-icon icon="mdi:drag-horizontal-variant"></ha-icon>
+            </div>
+            <div class="zone-label">
+              <strong>${this._escape(this._zoneName(entityId))}</strong>
+              <span>${this._escape(entityId)}</span>
+            </div>
+            <div class="zone-actions">
+              <button type="button" data-remove data-index="${index}" title="Убрать"><ha-icon icon="mdi:close"></ha-icon></button>
+            </div>
+            <div class="zone-sensor-pickers">
+              <ha-entity-picker data-zone-sensor data-zone-id="${this._escape(entityId)}" data-slot="0"></ha-entity-picker>
+              <ha-entity-picker data-zone-sensor data-zone-id="${this._escape(entityId)}" data-slot="1"></ha-entity-picker>
+            </div>
+          </div>`)
+      .join("");
+    const addOptions = available
+      .map(
+        (zone) =>
+          `<option value="${this._escape(zone.entity_id)}">${this._escape(this._zoneName(zone.entity_id))}</option>`
+      )
+      .join("");
+    this.shadowRoot.innerHTML = `
+      <style>
+        :host { display:block; color:var(--primary-text-color); }
+        * { box-sizing:border-box; }
+        .editor { display:grid; gap:20px; padding:4px 0; }
+        .field { display:grid; gap:7px; }
+        .label { font-size:12px; color:var(--secondary-text-color); }
+        .help { margin:0; color:var(--secondary-text-color); font-size:12px; line-height:1.4; }
+        .error { color:var(--error-color); }
+        ha-entity-picker { width:100%; }
+        .text-input { width:100%; min-height:48px; padding:0 12px; border:1px solid var(--divider-color); border-radius:8px; background:var(--card-background-color); color:var(--primary-text-color); font:inherit; }
+        .range-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; }
+        .range-field { display:grid; gap:5px; }
+        .range-field .text-input { min-width:0; }
+        ha-sortable { display:grid; gap:8px; }
+        .zone-row { display:grid; grid-template-columns:36px minmax(0,1fr) 36px; align-items:center; gap:8px; min-height:52px; padding:7px 8px 9px 4px; border:1px solid var(--divider-color); border-radius:10px; background:var(--card-background-color); }
+        .zone-row.invalid { border-color:var(--error-color); }
+        .zone-handle { display:flex; flex:0 0 36px; align-items:center; justify-content:center; align-self:stretch; border-radius:8px; color:var(--secondary-text-color); cursor:grab; touch-action:none; }
+        .zone-handle:active { cursor:grabbing; }
+        .zone-handle:focus-visible { outline:2px solid var(--primary-color); outline-offset:-2px; }
+        .zone-handle ha-icon { --mdc-icon-size:22px; pointer-events:none; }
+        .zone-label { display:grid; flex:1; min-width:0; gap:2px; }
+        .zone-label strong,.zone-label span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .zone-label strong { font-size:14px; font-weight:500; }
+        .zone-label span { font-size:11px; color:var(--secondary-text-color); }
+        .zone-actions { display:flex; flex:0 0 auto; }
+        .zone-sensor-pickers { grid-column:2 / -1; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+        button { display:flex; align-items:center; justify-content:center; width:36px; height:36px; border:0; border-radius:50%; background:transparent; color:var(--primary-text-color); cursor:pointer; }
+        button:hover { background:var(--secondary-background-color); }
+        button:disabled { opacity:.3; cursor:default; }
+        button ha-icon { --mdc-icon-size:20px; }
+        select { width:100%; min-height:48px; padding:0 12px; border:1px solid var(--divider-color); border-radius:8px; background:var(--card-background-color); color:var(--primary-text-color); font:inherit; }
+        h3 { margin:0; font-size:14px; font-weight:500; }
+        @media(max-width:520px){ .zone-sensor-pickers{grid-template-columns:1fr} }
+      </style>
+      <div class="editor">
+        <div class="field">
+          <label class="label" for="title">Заголовок карточки</label>
+          <input class="text-input" id="title" type="text" value="${this._escape(this._config.title || "")}">
+        </div>
+        <div class="field">
+          <ha-entity-picker id="tank"></ha-entity-picker>
+          <p class="help">Только отображение. Защитный порог бака настраивается в свойствах интеграции.</p>
+        </div>
+        <div class="field">
+          <h3>Зоны и порядок полива</h3>
+          ${zoneRows ? `<ha-sortable id="zone-sortable" handle-selector=".zone-handle" draggable-selector=".zone-row" group="fazenda-irrigation-zones" invert-swap>${zoneRows}</ha-sortable>` : '<p class="help">Зоны не выбраны.</p>'}
+          ${available.length ? `<select id="add-zone"><option value="">Добавить зону…</option>${addOptions}</select>` : ""}
+          ${!allowed.length ? '<p class="help error">Интеграция Fazenda Irrigation не найдена или не содержит зон.</p>' : ""}
+          <p class="help">Перетаскивайте зоны за значок слева. Для каждой зоны можно выбрать до двух дополнительных датчиков: их значения появятся на плашке и откроют стандартную историю по нажатию. При первом открытии выбраны все зоны, далее карточка запоминает выбор пользователя.</p>
+        </div>
+        <div class="field">
+          <label class="label" for="presets">Времена быстрых кнопок, минуты</label>
+          <input class="text-input" id="presets" type="text" value="${this._escape(this._configuredPresets())}">
+          <p id="preset-help" class="help">Например: 15, 30, 60, 120. Порядок сохраняется.</p>
+        </div>
+        <div class="field">
+          <h3>Диапазон «Другое», минуты</h3>
+          <div class="range-grid">
+            <label class="range-field"><span class="label">Минимум</span><input class="text-input" id="custom-min" type="number" value="${customBounds.minimum}"></label>
+            <label class="range-field"><span class="label">Максимум</span><input class="text-input" id="custom-max" type="number" value="${customBounds.maximum}"></label>
+            <label class="range-field"><span class="label">Шаг</span><input class="text-input" id="custom-step" type="number" value="${customBounds.step}"></label>
+          </div>
+          <p id="custom-range-help" class="help">Диапазон ползунка «Другое». Он не может выходить за безопасный диапазон интеграции.</p>
+        </div>
+      </div>`;
+    this._bindEditor();
+  }
+
+  _bindEditor() {
+    const tank = this.shadowRoot.querySelector("#tank");
+    if (tank) {
+      tank.hass = this._hass;
+      tank.value =
+        this._config.tank_entity ||
+        this._controllerState()?.attributes?.tank_level_entity ||
+        "";
+      tank.label = "Уровень воды для показа";
+      tank.includeDomains = ["sensor", "input_number", "number"];
+      tank.addEventListener("value-changed", (event) =>
+        this._setValue("tank_entity", event.detail?.value || "")
+      );
+    }
+    this.shadowRoot.querySelector("#title")?.addEventListener("change", (event) =>
+      this._setValue("title", event.target.value.trim())
+    );
+    this.shadowRoot.querySelectorAll("[data-zone-sensor]").forEach((picker) => {
+      const slot = Number(picker.dataset.slot);
+      picker.hass = this._hass;
+      picker.value = this._zoneSensorIds(picker.dataset.zoneId)[slot] || "";
+      picker.label = `Дополнительный датчик ${slot + 1}`;
+      picker.includeDomains = ["sensor", "binary_sensor"];
+      picker.addEventListener("value-changed", (event) =>
+        this._setZoneSensor(
+          picker.dataset.zoneId,
+          slot,
+          event.detail?.value || ""
+        )
+      );
+    });
+    this.shadowRoot.querySelector("#zone-sortable")?.addEventListener("item-moved", (event) => {
+      const oldIndex = Number(event.detail?.oldIndex);
+      const newIndex = Number(event.detail?.newIndex);
+      this._moveZoneTo(oldIndex, newIndex);
+    });
+    this.shadowRoot.querySelectorAll("[data-drag-handle]").forEach((handle) => {
+      handle.addEventListener("keydown", (event) => {
+        const offset = event.key === "ArrowUp" ? -1 : event.key === "ArrowDown" ? 1 : 0;
+        if (!offset) return;
+        event.preventDefault();
+        event.stopPropagation();
+        this._moveZone(Number(handle.dataset.index), offset);
+      });
+    });
+    this.shadowRoot.querySelectorAll("[data-remove]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const zones = this._selectedZoneIds();
+        zones.splice(Number(button.dataset.index), 1);
+        this._setZones(zones);
+      });
+    });
+    this.shadowRoot.querySelector("#add-zone")?.addEventListener("change", (event) => {
+      if (event.target.value) {
+        this._setZones([...this._selectedZoneIds(), event.target.value]);
+      }
+    });
+    const presets = this.shadowRoot.querySelector("#presets");
+    presets?.addEventListener("change", (event) => {
+      const raw = event.target.value.trim();
+      if (!raw) {
+        this._setValue("duration_presets", null);
+        return;
+      }
+      const parsed = this._parsePresetInput(raw);
+      if (!parsed.valid) {
+        const help = this.shadowRoot.querySelector("#preset-help");
+        if (help) {
+          help.textContent = parsed.message;
+          help.classList.add("error");
+        }
+        return;
+      }
+      this._setValue("duration_presets", parsed.values);
+    });
+    const rangeInputs = ["#custom-min", "#custom-max", "#custom-step"]
+      .map((selector) => this.shadowRoot.querySelector(selector))
+      .filter(Boolean);
+    rangeInputs.forEach((input) => {
+      input.addEventListener("change", () => {
+        const bounds = {
+          minimum: Number(this.shadowRoot.querySelector("#custom-min").value),
+          maximum: Number(this.shadowRoot.querySelector("#custom-max").value),
+          step: Number(this.shadowRoot.querySelector("#custom-step").value),
+        };
+        const validation = this._validateCustomBounds(bounds);
+        if (!validation.valid) {
+          const help = this.shadowRoot.querySelector("#custom-range-help");
+          if (help) {
+            help.textContent = validation.message;
+            help.classList.add("error");
+          }
+          return;
+        }
+        this._emit({
+          ...this._config,
+          custom_duration_min: bounds.minimum,
+          custom_duration_max: bounds.maximum,
+          custom_duration_step: bounds.step,
+        });
+      });
+    });
+  }
+}
+
 if (!customElements.get("fazenda-irrigation-card")) {
   customElements.define("fazenda-irrigation-card", FazendaIrrigationCard);
+}
+
+if (!customElements.get("fazenda-irrigation-card-editor")) {
+  customElements.define(
+    "fazenda-irrigation-card-editor",
+    FazendaIrrigationCardEditor
+  );
 }
 
 window.customCards = window.customCards || [];

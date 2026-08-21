@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import importlib.util
 import sys
 import types
@@ -66,13 +67,14 @@ def _install_home_assistant_stubs() -> None:
 package = types.ModuleType(PACKAGE)
 package.__path__ = [str(COMPONENT)]
 sys.modules[PACKAGE] = package
-_load_module(f"{PACKAGE}.const", COMPONENT / "const.py")
+const = _load_module(f"{PACKAGE}.const", COMPONENT / "const.py")
 schedule = _load_module(f"{PACKAGE}.schedule", COMPONENT / "schedule.py")
 _install_home_assistant_stubs()
 controller_module = _load_module(f"{PACKAGE}.controller", COMPONENT / "controller.py")
 
 IrrigationController = controller_module.IrrigationController
 IrrigationStopped = controller_module.IrrigationStopped
+IrrigationPlan = schedule.IrrigationPlan
 Segment = schedule.Segment
 
 
@@ -123,8 +125,10 @@ def _make_controller() -> tuple[IrrigationController, FakeClock, list[bool]]:
             "phase": "waiting",
             "phase_started_at": None,
             "phase_ends_at": None,
+            "next_start_at": None,
         }
     }
+    controller._zone_start_queue = {}
     controller._zone_last_started_at = {}
     controller._zone_duty_used_seconds = {}
     controller._zone_cooldown_until = {}
@@ -135,6 +139,11 @@ def _make_controller() -> tuple[IrrigationController, FakeClock, list[bool]]:
     controller.last_session_started_at = controller.started_at
     controller.last_session_finished_at = None
     controller.last_result = None
+    controller.status = const.STATUS_IDLE
+    controller.options = {}
+    controller._stop_event = asyncio.Event()
+    controller._abort_error = None
+    controller._source_started_by_us = False
     events: list[bool] = []
 
     async def set_zone(_entity_id: str, active: bool) -> None:
@@ -148,6 +157,32 @@ def _make_controller() -> tuple[IrrigationController, FakeClock, list[bool]]:
 
 class ControllerTests(unittest.IsolatedAsyncioTestCase):
     """Verify runtime accounting without a full Home Assistant process."""
+
+    def test_runtime_schedule_tracks_each_next_segment(self) -> None:
+        controller, _clock, _events = _make_controller()
+        started_at = datetime(2026, 8, 21, 10, 0, tzinfo=UTC)
+        plan = IrrigationPlan(
+            "sequential",
+            (
+                Segment("switch.zone", 15, 40),
+                Segment("switch.zone", 90, 20),
+            ),
+            110,
+        )
+
+        controller._set_runtime_schedule(plan, started_at)
+
+        self.assertEqual(
+            controller._zone_runtime["switch.zone"]["next_start_at"],
+            "2026-08-21T10:00:15+00:00",
+        )
+        controller._advance_runtime_schedule("switch.zone")
+        self.assertEqual(
+            controller._zone_runtime["switch.zone"]["next_start_at"],
+            "2026-08-21T10:01:30+00:00",
+        )
+        controller._advance_runtime_schedule("switch.zone")
+        self.assertIsNone(controller._zone_runtime["switch.zone"]["next_start_at"])
 
     async def test_completed_segment_is_closed_and_accounted(self) -> None:
         controller, clock, events = _make_controller()
@@ -277,6 +312,81 @@ class ControllerTests(unittest.IsolatedAsyncioTestCase):
 
         with self.assertRaisesRegex(RuntimeError, "unavailable"):
             await IrrigationController._async_set_zone(controller, "switch.zone", True)
+
+    def test_selected_zones_preserve_card_order(self) -> None:
+        controller, _clock, _events = _make_controller()
+        controller.zones = [
+            {"entity_id": "switch.first", "name": "First"},
+            {"entity_id": "switch.second", "name": "Second"},
+            {"entity_id": "switch.third", "name": "Third"},
+        ]
+
+        selected = controller._ordered_selected_zones(["switch.third", "switch.first"])
+
+        self.assertEqual(
+            [zone["entity_id"] for zone in selected],
+            ["switch.third", "switch.first"],
+        )
+
+    def test_unavailable_or_open_zone_is_rejected_before_start(self) -> None:
+        controller, _clock, _events = _make_controller()
+
+        for state in ("unknown", "unavailable", "on", "open", "opening"):
+            with self.subTest(state=state):
+                controller.hass.states["switch.zone"].state = state
+                with self.assertRaises(controller_module.ServiceValidationError):
+                    controller._validate_zone_states(["switch.zone"])
+
+        controller.hass.states["switch.zone"].state = "off"
+        controller._validate_zone_states(["switch.zone"])
+
+    def test_tank_level_interlock_rejects_bad_or_low_values(self) -> None:
+        controller, _clock, _events = _make_controller()
+        controller.options = {
+            const.CONF_TANK_LEVEL_ENTITY: "sensor.tank",
+            const.CONF_MIN_TANK_LEVEL: 50,
+        }
+
+        for value in ("unknown", "unavailable", "not-a-number", "49.9"):
+            with self.subTest(value=value):
+                controller.hass.states["sensor.tank"] = FakeState(value)
+                with self.assertRaises(controller_module.ServiceValidationError):
+                    controller._validate_tank_level()
+
+        controller.hass.states["sensor.tank"] = FakeState("50")
+        controller._validate_tank_level()
+
+    def test_tank_drop_requests_session_abort(self) -> None:
+        controller, _clock, _events = _make_controller()
+        controller.status = const.STATUS_RUNNING
+        controller.options = {
+            const.CONF_TANK_LEVEL_ENTITY: "sensor.tank",
+            const.CONF_MIN_TANK_LEVEL: 50,
+        }
+        controller.hass.states["sensor.tank"] = FakeState("10")
+
+        controller._async_tank_changed(None)
+
+        self.assertTrue(controller._stop_event.is_set())
+        self.assertIn("below", controller._abort_error)
+
+    async def test_source_is_closed_only_when_owned_unless_forced(self) -> None:
+        controller, _clock, events = _make_controller()
+        controller.options = {const.CONF_WATER_SOURCE_ENTITY: "switch.source"}
+        controller.hass.states["switch.source"] = FakeState("on")
+
+        await controller._async_set_source(True)
+        await controller._async_set_source(False)
+        self.assertEqual(events, [])
+
+        await controller._async_set_source(False, force=True)
+        self.assertEqual(events, [False])
+
+        events.clear()
+        controller.hass.states["switch.source"].state = "off"
+        await controller._async_set_source(True)
+        await controller._async_set_source(False)
+        self.assertEqual(events, [True, False])
 
 
 if __name__ == "__main__":
