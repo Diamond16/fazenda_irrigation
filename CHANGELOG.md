@@ -6,6 +6,13 @@ Notable changes are documented here using
 
 ## [Unreleased]
 
+## [0.9.3] - 2026-08-21
+
+### Changed
+
+- The displayed tank level now shows the entity name on hover and opens the
+  standard Home Assistant entity history dialog when selected.
+
 ## [0.9.2] - 2026-08-21
 
 ### Changed
@@ -71,7 +78,8 @@ Notable changes are documented here using
 - Persistent thermal accounting, optional tank interlock, optional source
   control, bundled card, actions, recovery, and tests.
 
-[Unreleased]: https://github.com/Diamond16/fazenda_irrigation/compare/v0.9.2...HEAD
+[Unreleased]: https://github.com/Diamond16/fazenda_irrigation/compare/v0.9.3...HEAD
+[0.9.3]: https://github.com/Diamond16/fazenda_irrigation/compare/v0.9.2...v0.9.3
 [0.9.2]: https://github.com/Diamond16/fazenda_irrigation/compare/v0.9.1...v0.9.2
 [0.9.1]: https://github.com/Diamond16/fazenda_irrigation/compare/v0.2.1...v0.9.1
 [0.2.1]: https://github.com/Diamond16/fazenda_irrigation/compare/v0.2.0...v0.2.1

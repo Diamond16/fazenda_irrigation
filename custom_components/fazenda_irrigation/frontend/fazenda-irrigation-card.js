@@ -1,4 +1,4 @@
-const FI_CARD_VERSION = "0.9.2";
+const FI_CARD_VERSION = "0.9.3";
 
 const FI_TRANSLATIONS = {
   en: {
@@ -772,7 +772,9 @@ class FazendaIrrigationCard extends HTMLElement {
       h3 { font-size:14px; font-weight:500; }
       .caption,.secondary,.range-scale { color:var(--secondary-text-color); font-size:12px; }
       .caption { margin-top:3px; }
-      .tank { flex:0 0 auto; font-size:13px; color:var(--secondary-text-color); }
+      .tank { flex:0 0 auto; padding:0; border:0; background:transparent; font-size:13px; color:var(--secondary-text-color); cursor:pointer; touch-action:manipulation; }
+      .tank:hover { color:var(--primary-color); }
+      .tank:focus-visible { outline:2px solid var(--primary-color); outline-offset:4px; border-radius:4px; }
       .tank.low { color:var(--error-color); }
       .section + .section { border-top:1px solid var(--divider-color); }
       .section-head { display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin-bottom:11px; }
@@ -854,6 +856,9 @@ class FazendaIrrigationCard extends HTMLElement {
 
   _header(attrs, running = false) {
     const tank = this._tank(attrs);
+    const tankName = tank
+      ? this._hass.states[tank.entityId]?.attributes?.friendly_name || tank.entityId
+      : null;
     const previousSession = attrs.last_session_finished_at;
     const idleCaption = previousSession
       ? this._t("previousSession", { value: `<span data-relative="${this._escape(previousSession)}">${this._relativeTime(previousSession)}</span>` })
@@ -861,7 +866,7 @@ class FazendaIrrigationCard extends HTMLElement {
     return `
       <div class="header">
         <div class="title"><ha-icon icon="mdi:sprinkler-variant"></ha-icon><div><h2>${this._escape(this._config.title || attrs.friendly_name || this._t("irrigation"))}</h2><p class="caption">${running ? this._t("sessionRunning") : idleCaption}</p></div></div>
-        ${tank ? `<div class="tank ${tank.low ? "low" : ""}"><ha-icon icon="mdi:waves"></ha-icon><span>${this._t("tank")} <strong>${this._escape(tank.text)}</strong></span></div>` : ""}
+        ${tank ? `<button type="button" class="tank ${tank.low ? "low" : ""}" data-more-info="${this._escape(tank.entityId)}" title="${this._escape(tankName)}" aria-label="${this._escape(`${tankName}: ${tank.text}`)}"><ha-icon icon="mdi:waves"></ha-icon><span>${this._t("tank")} <strong>${this._escape(tank.text)}</strong></span></button>` : ""}
       </div>`;
   }
 

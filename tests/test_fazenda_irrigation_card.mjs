@@ -122,29 +122,37 @@ assert.doesNotMatch(
   sensorStyles,
   /\.zone-sensor \{[^}]*background:var\(--secondary-background-color\)/
 );
-let sensorClickHandler = null;
+const moreInfoHandlers = new Map();
 const stateIcon = { dataset: { stateIcon: "sensor.temperature" } };
 const sensorButton = {
   dataset: { moreInfo: "sensor.temperature" },
   addEventListener(type, handler) {
-    if (type === "click") sensorClickHandler = handler;
+    if (type === "click") moreInfoHandlers.set(this.dataset.moreInfo, handler);
+  },
+};
+const tankButton = {
+  dataset: { moreInfo: "sensor.tank" },
+  addEventListener(type, handler) {
+    if (type === "click") moreInfoHandlers.set(this.dataset.moreInfo, handler);
   },
 };
 sensorCard.shadowRoot = {
   querySelectorAll(selector) {
     if (selector === "[data-state-icon]") return [stateIcon];
-    if (selector === "[data-more-info]") return [sensorButton];
+    if (selector === "[data-more-info]") return [sensorButton, tankButton];
     return [];
   },
 };
 sensorCard._bindZoneSensors();
 assert.equal(stateIcon.stateObj, sensorCard._hass.states["sensor.temperature"]);
-assert.equal(typeof sensorClickHandler, "function");
-sensorClickHandler({ preventDefault() {}, stopPropagation() {} });
+assert.equal(typeof moreInfoHandlers.get("sensor.temperature"), "function");
+moreInfoHandlers.get("sensor.temperature")({ preventDefault() {}, stopPropagation() {} });
 assert.equal(sensorCard.lastEvent.type, "hass-more-info");
 assert.deepEqual(sensorCard.lastEvent.detail, {
   entityId: "sensor.temperature",
 });
+moreInfoHandlers.get("sensor.tank")({ preventDefault() {}, stopPropagation() {} });
+assert.deepEqual(sensorCard.lastEvent.detail, { entityId: "sensor.tank" });
 
 const card = new Card();
 const attrs = {
@@ -442,7 +450,7 @@ card._hass = {
   states: {
     "sensor.display_tank": {
       state: "12",
-      attributes: { unit_of_measurement: "%" },
+      attributes: { unit_of_measurement: "%", friendly_name: "Display tank" },
     },
     "sensor.safety_tank": {
       state: "40",
@@ -462,6 +470,12 @@ assert.deepEqual(card._safetyTank(configuredAttrs), {
   text: "40%",
   low: true,
 });
+const tankHeader = card._header(configuredAttrs);
+assert.match(tankHeader, /<button[^>]*class="tank/);
+assert.match(tankHeader, /data-more-info="sensor\.display_tank"/);
+assert.match(tankHeader, /title="Display tank"/);
+assert.match(tankHeader, /aria-label="Display tank: 12%"/);
+assert.match(card._styles(), /\.tank:hover \{ color:var\(--primary-color\)/);
 
 const editor = new Editor();
 editor.setConfig({
