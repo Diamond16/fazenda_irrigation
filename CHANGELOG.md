@@ -6,10 +6,17 @@ Notable changes are documented here using
 
 ## [Unreleased]
 
+## [0.9.2] - 2026-08-21
+
+### Changed
+
+- The Lovelace card and visual editor now follow the Home Assistant interface
+  language, with complete English and Russian text and English as the fallback.
+
 ### Documentation
 
 - Added English and Russian README navigation and card previews for idle and
-  running irrigation states.
+  running irrigation states. All preview screenshots use the English UI.
 
 ## [0.9.1] - 2026-08-21
 
@@ -64,7 +71,8 @@ Notable changes are documented here using
 - Persistent thermal accounting, optional tank interlock, optional source
   control, bundled card, actions, recovery, and tests.
 
-[Unreleased]: https://github.com/Diamond16/fazenda_irrigation/compare/v0.9.1...HEAD
+[Unreleased]: https://github.com/Diamond16/fazenda_irrigation/compare/v0.9.2...HEAD
+[0.9.2]: https://github.com/Diamond16/fazenda_irrigation/compare/v0.9.1...v0.9.2
 [0.9.1]: https://github.com/Diamond16/fazenda_irrigation/compare/v0.2.1...v0.9.1
 [0.2.1]: https://github.com/Diamond16/fazenda_irrigation/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/Diamond16/fazenda_irrigation/releases/tag/v0.2.0

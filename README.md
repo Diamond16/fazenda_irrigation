@@ -28,6 +28,8 @@ well-defined session when needed.
   control.
 - Bundled Lovelace card with zone selection, finish estimate, live progress,
   and a visual editor.
+- English and Russian card text follows the Home Assistant interface language;
+  English is used as the fallback.
 - Card settings for the displayed tank, zone subset and order, up to two
   additional sensors per zone, duration buttons, and custom slider range.
 - Home Assistant actions for automations; no integration YAML is required.

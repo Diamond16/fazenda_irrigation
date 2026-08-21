@@ -1,17 +1,197 @@
-const FI_CARD_VERSION = "0.9.1";
+const FI_CARD_VERSION = "0.9.2";
 
-function normalizeZoneSensors(value) {
+const FI_TRANSLATIONS = {
+  en: {
+    zoneSensorsObject: "zone_sensors must be an object",
+    zoneSensorsList: "zone_sensors.{zone} must be a list",
+    zoneSensorsLimit: "Zone {zone} can have no more than two sensors",
+    configList: "{key} must be a list",
+    noData: "No data",
+    unavailable: "Unavailable",
+    zoneUnavailable: "Unavailable",
+    minutes: "{value} min",
+    seconds: "{value} sec",
+    hours: "{value} h",
+    days: "{value} d",
+    parallelOrder: "Simultaneously:",
+    sequentialOrder: "Order:",
+    repeatCycles: "repeat {value} cycles",
+    neverStarted: "never started",
+    justNow: "just now",
+    agoSeconds: "{value} sec ago",
+    agoMinutes: "{value} min ago",
+    agoHours: "{value} h ago",
+    agoDays: "{value} d ago",
+    integrationUnavailable: "Fazenda Irrigation is not configured or unavailable",
+    previousSession: "Previous session — {value}",
+    irrigationNeverStarted: "Irrigation has not started yet",
+    irrigation: "Irrigation",
+    sessionRunning: "Session in progress",
+    tank: "Tank",
+    alreadyOn: "Already on",
+    today: "Today",
+    tomorrow: "Tomorrow",
+    zones: "Zones",
+    selected: "Selected: {value}",
+    durationPerZone: "Time for each zone",
+    actualOpenTime: "Actual open time",
+    customValue: "Custom value",
+    customMinutes: "{value} minutes",
+    mode: "Mode",
+    sequential: "Sequential",
+    parallel: "Simultaneously",
+    plan: "Plan",
+    coolingIncluded: "Including cooldown",
+    finish: "Finish",
+    totalTime: "Total time",
+    thermalWarning: "Each valve: at most {max} minutes on, followed by at least {cooldown} minutes of cooldown.",
+    lowTank: "The safety tank sensor prevents irrigation from starting: {value}.",
+    start: "Start irrigation",
+    valveOpening: "Opening valve",
+    watering: "Watering",
+    coolingRemaining: "Cooling — {value} min remaining",
+    done: "Done",
+    error: "Error",
+    stopped: "Stopped",
+    waiting: "Waiting for its turn",
+    startsNow: "Starts now",
+    startsIn: "Starts in {value}",
+    remaining: "{value} remaining",
+    parallelIrrigation: "Simultaneous irrigation",
+    sequentialIrrigation: "Sequential irrigation",
+    until: "until {value}",
+    stop: "Stop",
+    presetValidation: "Enter whole minutes from {min} to {max} in increments of {step}",
+    rangeValidation: "Allowed: {min}–{max} minutes; the step must be a multiple of {step}",
+    moveZone: "Move {value}",
+    dragZone: "Drag to change order",
+    remove: "Remove",
+    cardTitle: "Card title",
+    tankHelp: "Display only. Configure the tank safety threshold in the integration options.",
+    zonesAndOrder: "Zones and irrigation order",
+    noZonesSelected: "No zones selected.",
+    addZone: "Add zone…",
+    noIntegrationZones: "Fazenda Irrigation was not found or has no zones.",
+    zonesHelp: "Drag zones by the handle on the left. Each zone can show up to two additional sensors; selecting a value opens its standard history. All zones are selected initially, then the card remembers the user's choice.",
+    presetLabel: "Quick-button durations, minutes",
+    presetHelp: "For example: 15, 30, 60, 120. Order is preserved.",
+    customRange: "Custom range, minutes",
+    minimum: "Minimum",
+    maximum: "Maximum",
+    step: "Step",
+    customRangeHelp: "Range of the Custom slider. It cannot exceed the integration's safe duration range.",
+    tankPicker: "Water level to display",
+    additionalSensor: "Additional sensor {value}",
+  },
+  ru: {
+    zoneSensorsObject: "zone_sensors должен быть объектом",
+    zoneSensorsList: "zone_sensors.{zone} должен быть списком",
+    zoneSensorsLimit: "Для зоны {zone} можно указать не более двух датчиков",
+    configList: "{key} должен быть списком",
+    noData: "Нет данных",
+    unavailable: "Недоступен",
+    zoneUnavailable: "Недоступна",
+    minutes: "{value} мин",
+    seconds: "{value} сек",
+    hours: "{value} ч",
+    days: "{value} дн",
+    parallelOrder: "Одновременно:",
+    sequentialOrder: "Порядок:",
+    repeatCycles: "повторить {value} раз",
+    neverStarted: "ещё не запускалась",
+    justNow: "только что",
+    agoSeconds: "{value} сек назад",
+    agoMinutes: "{value} мин назад",
+    agoHours: "{value} ч назад",
+    agoDays: "{value} дн назад",
+    integrationUnavailable: "Fazenda Irrigation не настроена или недоступна",
+    previousSession: "Прошлая сессия — {value}",
+    irrigationNeverStarted: "Полив ещё не запускался",
+    irrigation: "Полив",
+    sessionRunning: "Сессия выполняется",
+    tank: "Бак",
+    alreadyOn: "Уже включена",
+    today: "Сегодня",
+    tomorrow: "Завтра",
+    zones: "Зоны",
+    selected: "Выбрано: {value}",
+    durationPerZone: "Время для каждой зоны",
+    actualOpenTime: "Фактическое открытие",
+    customValue: "Другое значение",
+    customMinutes: "{value} минут",
+    mode: "Схема",
+    sequential: "По очереди",
+    parallel: "Одновременно",
+    plan: "План",
+    coolingIncluded: "С учётом охлаждения",
+    finish: "Завершение",
+    totalTime: "Общее время",
+    thermalWarning: "Каждый клапан: не более {max} минут работы, затем минимум {cooldown} минут охлаждения.",
+    lowTank: "Защитный датчик бака не позволяет запустить полив: {value}.",
+    start: "Запустить полив",
+    valveOpening: "Открытие клапана",
+    watering: "Полив",
+    coolingRemaining: "Охлаждение — ещё {value} мин",
+    done: "Готово",
+    error: "Ошибка",
+    stopped: "Остановлено",
+    waiting: "Ожидает своей очереди",
+    startsNow: "Включится сейчас",
+    startsIn: "Включится через {value}",
+    remaining: "Осталось {value}",
+    parallelIrrigation: "Одновременный полив",
+    sequentialIrrigation: "Полив по очереди",
+    until: "до {value}",
+    stop: "Остановить",
+    presetValidation: "Укажите целые минуты от {min} до {max} с шагом {step}",
+    rangeValidation: "Допустимо: от {min} до {max} минут; шаг должен быть кратен {step}",
+    moveZone: "Переместить {value}",
+    dragZone: "Перетащить для изменения порядка",
+    remove: "Убрать",
+    cardTitle: "Заголовок карточки",
+    tankHelp: "Только отображение. Защитный порог бака настраивается в свойствах интеграции.",
+    zonesAndOrder: "Зоны и порядок полива",
+    noZonesSelected: "Зоны не выбраны.",
+    addZone: "Добавить зону…",
+    noIntegrationZones: "Интеграция Fazenda Irrigation не найдена или не содержит зон.",
+    zonesHelp: "Перетаскивайте зоны за значок слева. Для каждой зоны можно выбрать до двух дополнительных датчиков: их значения появятся на плашке и откроют стандартную историю по нажатию. При первом открытии выбраны все зоны, далее карточка запоминает выбор пользователя.",
+    presetLabel: "Времена быстрых кнопок, минуты",
+    presetHelp: "Например: 15, 30, 60, 120. Порядок сохраняется.",
+    customRange: "Диапазон «Другое», минуты",
+    minimum: "Минимум",
+    maximum: "Максимум",
+    step: "Шаг",
+    customRangeHelp: "Диапазон ползунка «Другое». Он не может выходить за безопасный диапазон интеграции.",
+    tankPicker: "Уровень воды для показа",
+    additionalSensor: "Дополнительный датчик {value}",
+  },
+};
+
+function fiLanguage(hass) {
+  const language = String(hass?.language || hass?.locale?.language || "en").toLowerCase();
+  return language.startsWith("ru") ? "ru" : "en";
+}
+
+function fiText(hass, key, values = {}) {
+  let result = FI_TRANSLATIONS[fiLanguage(hass)]?.[key] ?? FI_TRANSLATIONS.en[key] ?? key;
+  for (const [name, value] of Object.entries(values)) {
+    result = result.replaceAll(`{${name}}`, String(value));
+  }
+  return result;
+}
+
+function normalizeZoneSensors(value, hass = null) {
   if (value === undefined) return {};
   if (!value || Array.isArray(value) || typeof value !== "object") {
-    throw new Error("zone_sensors должен быть объектом");
+    throw new Error(fiText(hass, "zoneSensorsObject"));
   }
   const normalized = {};
   for (const [zoneEntityId, sensors] of Object.entries(value)) {
     if (!Array.isArray(sensors)) {
-      throw new Error(`zone_sensors.${zoneEntityId} должен быть списком`);
+      throw new Error(fiText(hass, "zoneSensorsList", { zone: zoneEntityId }));
     }
     if (sensors.length > 2) {
-      throw new Error(`Для зоны ${zoneEntityId} можно указать не более двух датчиков`);
+      throw new Error(fiText(hass, "zoneSensorsLimit", { zone: zoneEntityId }));
     }
     const entityIds = [...new Set(sensors.filter((entityId) => typeof entityId === "string" && entityId))];
     if (entityIds.length) normalized[zoneEntityId] = entityIds;
@@ -60,14 +240,14 @@ class FazendaIrrigationCard extends HTMLElement {
   setConfig(config) {
     for (const key of ["zones", "duration_presets"]) {
       if (config[key] !== undefined && !Array.isArray(config[key])) {
-        throw new Error(`${key} должен быть списком`);
+        throw new Error(fiText(this._hass, "configList", { key }));
       }
     }
     this._config = {
       ...config,
       ...(config.zone_sensors === undefined
         ? {}
-        : { zone_sensors: normalizeZoneSensors(config.zone_sensors) }),
+        : { zone_sensors: normalizeZoneSensors(config.zone_sensors, this._hass) }),
     };
     this._initializedFor = null;
     this._renderFingerprint = null;
@@ -88,6 +268,10 @@ class FazendaIrrigationCard extends HTMLElement {
 
   getGridOptions() {
     return { columns: 12, min_columns: 6 };
+  }
+
+  _t(key, values = {}) {
+    return fiText(this._hass, key, values);
   }
 
   disconnectedCallback() {
@@ -126,6 +310,7 @@ class FazendaIrrigationCard extends HTMLElement {
       ? this._hass.states[attrs.tank_level_entity]
       : null;
     return JSON.stringify([
+      fiLanguage(this._hass),
       stateObj.state,
       stateObj.last_updated,
       zoneStates,
@@ -200,7 +385,7 @@ class FazendaIrrigationCard extends HTMLElement {
   }
 
   _formatSensorState(stateObj) {
-    if (!stateObj) return "Нет данных";
+    if (!stateObj) return this._t("noData");
     if (typeof this._hass?.formatEntityState === "function") {
       try {
         return this._hass.formatEntityState(stateObj);
@@ -208,7 +393,7 @@ class FazendaIrrigationCard extends HTMLElement {
         // Fall back to the raw state below.
       }
     }
-    if (["unknown", "unavailable"].includes(stateObj.state)) return "Недоступен";
+    if (["unknown", "unavailable"].includes(stateObj.state)) return this._t("unavailable");
     const unit = stateObj.attributes?.unit_of_measurement;
     return `${stateObj.state}${unit ? ` ${unit}` : ""}`;
   }
@@ -355,30 +540,36 @@ class FazendaIrrigationCard extends HTMLElement {
 
   _formatDuration(minutes) {
     const value = Math.max(0, Math.round(Number(minutes)));
-    if (value < 60) return `${value} мин`;
+    if (value < 60) return this._t("minutes", { value });
     const hours = Math.floor(value / 60);
     const rest = value % 60;
-    return rest ? `${hours} ч ${rest} мин` : `${hours} ч`;
+    return rest
+      ? `${this._t("hours", { value: hours })} ${this._t("minutes", { value: rest })}`
+      : this._t("hours", { value: hours });
   }
 
   _formatRuntimeDuration(seconds) {
     const value = Math.max(0, Math.floor(Number(seconds) || 0));
-    if (value < 60) return `${value} сек`;
+    if (value < 60) return this._t("seconds", { value });
     const minutes = Math.floor(value / 60);
-    if (minutes < 60) return `${minutes} мин`;
+    if (minutes < 60) return this._t("minutes", { value: minutes });
     const hours = Math.floor(minutes / 60);
     const rest = minutes % 60;
-    return rest ? `${hours} ч ${rest} мин` : `${hours} ч`;
+    return rest
+      ? `${this._t("hours", { value: hours })} ${this._t("minutes", { value: rest })}`
+      : this._t("hours", { value: hours });
   }
 
   _formatCountdown(seconds) {
     const value = Math.max(0, Math.ceil(Number(seconds) || 0));
-    if (value < 60) return `${value} сек`;
+    if (value < 60) return this._t("seconds", { value });
     const minutes = Math.ceil(value / 60);
-    if (minutes < 60) return `${minutes} мин`;
+    if (minutes < 60) return this._t("minutes", { value: minutes });
     const hours = Math.floor(minutes / 60);
     const rest = minutes % 60;
-    return rest ? `${hours} ч ${rest} мин` : `${hours} ч`;
+    return rest
+      ? `${this._t("hours", { value: hours })} ${this._t("minutes", { value: rest })}`
+      : this._t("hours", { value: hours });
   }
 
   _planZonesMarkup(plan) {
@@ -387,32 +578,32 @@ class FazendaIrrigationCard extends HTMLElement {
       this._escape(this._zoneName(zone))
     );
     if (this._mode === "parallel") {
-      return `<div class="order"><strong>Одновременно:</strong> ${names.join(" + ")}</div>`;
+      return `<div class="order"><strong>${this._t("parallelOrder")}</strong> ${names.join(" + ")}</div>`;
     }
-    return `<div class="order"><strong>Порядок:</strong> ${names.join(" → ")}${plan.cycles > 1 ? ` → повторить ${plan.cycles} цикла` : ""}</div>`;
+    return `<div class="order"><strong>${this._t("sequentialOrder")}</strong> ${names.join(" → ")}${plan.cycles > 1 ? ` → ${this._t("repeatCycles", { value: plan.cycles })}` : ""}</div>`;
   }
 
   _formatClock(date) {
-    return new Intl.DateTimeFormat("ru-RU", {
+    return new Intl.DateTimeFormat(fiLanguage(this._hass) === "ru" ? "ru-RU" : "en-GB", {
       hour: "2-digit",
       minute: "2-digit",
     }).format(date);
   }
 
   _relativeTime(timestamp) {
-    if (!timestamp) return "ещё не запускалась";
+    if (!timestamp) return this._t("neverStarted");
     const seconds = Math.max(
       0,
       Math.floor((Date.now() - new Date(timestamp).getTime()) / 1000)
     );
-    if (seconds < 10) return "только что";
-    if (seconds < 60) return `${seconds} сек назад`;
+    if (seconds < 10) return this._t("justNow");
+    if (seconds < 60) return this._t("agoSeconds", { value: seconds });
     const minutes = Math.floor(seconds / 60);
-    if (minutes < 60) return `${minutes} мин назад`;
+    if (minutes < 60) return this._t("agoMinutes", { value: minutes });
     const hours = Math.floor(minutes / 60);
-    if (hours < 24) return `${hours} ч назад`;
+    if (hours < 24) return this._t("agoHours", { value: hours });
     const days = Math.floor(hours / 24);
-    return `${days} дн назад`;
+    return this._t("agoDays", { value: days });
   }
 
   _updateRelativeLabels() {
@@ -543,7 +734,7 @@ class FazendaIrrigationCard extends HTMLElement {
       value: Number.isFinite(numeric) ? numeric : null,
       text: state
         ? `${state.state}${state.attributes.unit_of_measurement || ""}`
-        : "нет данных",
+        : this._t("noData"),
       low:
         isSafetyEntity &&
         Number(attrs.min_tank_level || 0) > 0 &&
@@ -562,7 +753,7 @@ class FazendaIrrigationCard extends HTMLElement {
       value: Number.isFinite(numeric) ? numeric : null,
       text: state
         ? `${state.state}${state.attributes.unit_of_measurement || ""}`
-        : "нет данных",
+        : this._t("noData"),
       low: !Number.isFinite(numeric) || numeric < minimum,
     };
   }
@@ -645,7 +836,7 @@ class FazendaIrrigationCard extends HTMLElement {
     if (!this.shadowRoot || !this._hass || !this._config) return;
     const stateObj = this._stateObj();
     if (!stateObj) {
-      this.shadowRoot.innerHTML = `<style>${this._styles()}</style><ha-card><div class="section error">Fazenda Irrigation не настроена или недоступна</div></ha-card>`;
+      this.shadowRoot.innerHTML = `<style>${this._styles()}</style><ha-card><div class="section error">${this._t("integrationUnavailable")}</div></ha-card>`;
       return;
     }
     const attrs = stateObj.attributes || {};
@@ -665,12 +856,12 @@ class FazendaIrrigationCard extends HTMLElement {
     const tank = this._tank(attrs);
     const previousSession = attrs.last_session_finished_at;
     const idleCaption = previousSession
-      ? `Прошлая сессия — <span data-relative="${this._escape(previousSession)}">${this._relativeTime(previousSession)}</span>`
-      : "Полив ещё не запускался";
+      ? this._t("previousSession", { value: `<span data-relative="${this._escape(previousSession)}">${this._relativeTime(previousSession)}</span>` })
+      : this._t("irrigationNeverStarted");
     return `
       <div class="header">
-        <div class="title"><ha-icon icon="mdi:sprinkler-variant"></ha-icon><div><h2>${this._escape(this._config.title || attrs.friendly_name || "Полив")}</h2><p class="caption">${running ? "Сессия выполняется" : idleCaption}</p></div></div>
-        ${tank ? `<div class="tank ${tank.low ? "low" : ""}"><ha-icon icon="mdi:waves"></ha-icon><span>Бак <strong>${this._escape(tank.text)}</strong></span></div>` : ""}
+        <div class="title"><ha-icon icon="mdi:sprinkler-variant"></ha-icon><div><h2>${this._escape(this._config.title || attrs.friendly_name || this._t("irrigation"))}</h2><p class="caption">${running ? this._t("sessionRunning") : idleCaption}</p></div></div>
+        ${tank ? `<div class="tank ${tank.low ? "low" : ""}"><ha-icon icon="mdi:waves"></ha-icon><span>${this._t("tank")} <strong>${this._escape(tank.text)}</strong></span></div>` : ""}
       </div>`;
   }
 
@@ -699,9 +890,9 @@ class FazendaIrrigationCard extends HTMLElement {
         const active = external && !["off", "closed", "unavailable", "unknown"].includes(external.state);
         const selected = this._selectedZones.has(zone.entity_id);
         const status = unavailable
-          ? "Недоступна"
+          ? this._t("zoneUnavailable")
           : active
-            ? "Уже включена"
+            ? this._t("alreadyOn")
             : this._relativeTime(zone.last_started_at);
         const relative = !unavailable && !active && zone.last_started_at
           ? ` data-relative="${this._escape(zone.last_started_at)}"`
@@ -713,33 +904,33 @@ class FazendaIrrigationCard extends HTMLElement {
       .map((minutes) => `<button class="preset" data-preset="${Number(minutes)}" ${this._durationSource === "preset" && this._duration === Number(minutes) ? "selected" : ""}>${this._formatDuration(minutes)}</button>`)
       .join("");
     const planZones = this._planZonesMarkup(plan);
-    const finishLabel = plan.finish.toDateString() === new Date().toDateString() ? "Сегодня" : "Завтра";
+    const finishLabel = plan.finish.toDateString() === new Date().toDateString() ? this._t("today") : this._t("tomorrow");
     this.shadowRoot.innerHTML = `
       <style>${this._styles()}</style>
       <ha-card>
         ${this._header(attrs)}
-        <div class="section"><div class="section-head"><h3>Зоны</h3><span class="secondary">Выбрано: ${plan.selected.length}</span></div><div class="zones">${zoneButtons}</div></div>
+        <div class="section"><div class="section-head"><h3>${this._t("zones")}</h3><span class="secondary">${this._t("selected", { value: plan.selected.length })}</span></div><div class="zones">${zoneButtons}</div></div>
         <div class="section">
-          <div class="section-head"><h3>Время для каждой зоны</h3><span class="secondary">Фактическое открытие</span></div>
+          <div class="section-head"><h3>${this._t("durationPerZone")}</h3><span class="secondary">${this._t("actualOpenTime")}</span></div>
           <div class="duration">${this._formatDuration(this._duration)}</div>
           <div class="presets">${presetButtons}</div>
           <div class="custom" ${this._durationSource === "custom" ? "selected" : ""}>
-            <div class="custom-head"><label class="custom-label" for="fi-duration"><span class="check"><ha-icon icon="mdi:check"></ha-icon></span><span>Другое значение</span></label><strong class="custom-value">${this._customDuration} минут</strong></div>
+            <div class="custom-head"><label class="custom-label" for="fi-duration"><span class="check"><ha-icon icon="mdi:check"></ha-icon></span><span>${this._t("customValue")}</span></label><strong class="custom-value">${this._t("customMinutes", { value: this._customDuration })}</strong></div>
             <input id="fi-duration" type="range" min="${customBounds.minimum}" max="${customBounds.maximum}" step="${customBounds.step}" value="${this._customDuration}">
-            <div class="range-scale"><span>${customBounds.minimum} мин</span><span>${this._formatDuration(customBounds.maximum)}</span></div>
+            <div class="range-scale"><span>${this._t("minutes", { value: customBounds.minimum })}</span><span>${this._formatDuration(customBounds.maximum)}</span></div>
           </div>
         </div>
-        <div class="section"><div class="section-head"><h3>Схема</h3></div><div class="mode"><button class="mode-button" data-mode="sequential" ${this._mode === "sequential" ? "selected" : ""}>По очереди</button><button class="mode-button" data-mode="parallel" ${this._mode === "parallel" ? "selected" : ""}>Одновременно</button></div></div>
-        <div class="section"><div class="section-head"><h3>План</h3><span class="secondary">С учётом охлаждения</span></div><div class="plan">
-          <div class="summary-line"><span class="secondary">Завершение</span><strong>${finishLabel}, ${this._formatClock(plan.finish)}</strong></div>
-          <div class="summary-line"><span class="secondary">Общее время</span><strong>${this._formatDuration(Math.ceil(plan.finishSeconds / 60))}</strong></div>
+        <div class="section"><div class="section-head"><h3>${this._t("mode")}</h3></div><div class="mode"><button class="mode-button" data-mode="sequential" ${this._mode === "sequential" ? "selected" : ""}>${this._t("sequential")}</button><button class="mode-button" data-mode="parallel" ${this._mode === "parallel" ? "selected" : ""}>${this._t("parallel")}</button></div></div>
+        <div class="section"><div class="section-head"><h3>${this._t("plan")}</h3><span class="secondary">${this._t("coolingIncluded")}</span></div><div class="plan">
+          <div class="summary-line"><span class="secondary">${this._t("finish")}</span><strong>${finishLabel}, ${this._formatClock(plan.finish)}</strong></div>
+          <div class="summary-line"><span class="secondary">${this._t("totalTime")}</span><strong>${this._formatDuration(Math.ceil(plan.finishSeconds / 60))}</strong></div>
           ${planZones}
-          <p class="warning">Каждый клапан: не более ${maxOn} минут работы, затем минимум ${cooldown} минут охлаждения.</p>
-          ${safetyTank?.low ? `<p class="error">Защитный датчик бака не позволяет запустить полив: ${this._escape(safetyTank.text)}.</p>` : ""}
+          <p class="warning">${this._t("thermalWarning", { max: maxOn, cooldown })}</p>
+          ${safetyTank?.low ? `<p class="error">${this._t("lowTank", { value: this._escape(safetyTank.text) })}</p>` : ""}
           ${stateObj.state === "error" && attrs.error ? `<p class="error">${this._escape(attrs.error)}</p>` : ""}
           ${this._error ? `<p class="error">${this._escape(this._error)}</p>` : ""}
         </div></div>
-        <div class="footer"><button class="start" ${canStart ? "" : "disabled"}>Запустить полив</button></div>
+        <div class="footer"><button class="start" ${canStart ? "" : "disabled"}>${this._t("start")}</button></div>
       </ha-card>`;
     this._bindSetup();
   }
@@ -758,7 +949,7 @@ class FazendaIrrigationCard extends HTMLElement {
     const duration = this.shadowRoot.querySelector(".duration");
     if (duration) duration.textContent = this._formatDuration(this._duration);
     const customValue = this.shadowRoot.querySelector(".custom-value");
-    if (customValue) customValue.textContent = `${this._customDuration} минут`;
+    if (customValue) customValue.textContent = this._t("customMinutes", { value: this._customDuration });
   }
 
   _activateCustom(attrs, render = true) {
@@ -885,26 +1076,26 @@ class FazendaIrrigationCard extends HTMLElement {
   }
 
   _phaseLabel(runtime) {
-    if (runtime.phase === "starting") return "Открытие клапана";
-    if (runtime.phase === "watering") return "Полив";
+    if (runtime.phase === "starting") return this._t("valveOpening");
+    if (runtime.phase === "watering") return this._t("watering");
     if (runtime.phase === "cooling") {
       const seconds = Math.max(0, Math.ceil((new Date(runtime.phase_ends_at).getTime() - Date.now()) / 1000));
       if (seconds === 0) return this._nextStartLabel(runtime);
-      return `Охлаждение — ещё ${Math.ceil(seconds / 60)} мин`;
+      return this._t("coolingRemaining", { value: Math.ceil(seconds / 60) });
     }
     if (runtime.phase === "waiting") return this._nextStartLabel(runtime);
-    if (runtime.phase === "done") return "Готово";
-    if (runtime.phase === "error") return "Ошибка";
-    return "Остановлено";
+    if (runtime.phase === "done") return this._t("done");
+    if (runtime.phase === "error") return this._t("error");
+    return this._t("stopped");
   }
 
   _nextStartLabel(runtime) {
-    if (!runtime.next_start_at) return "Ожидает своей очереди";
+    if (!runtime.next_start_at) return this._t("waiting");
     const seconds = Math.ceil(
       (new Date(runtime.next_start_at).getTime() - Date.now()) / 1000
     );
-    if (!Number.isFinite(seconds) || seconds <= 0) return "Включится сейчас";
-    return `Включится через ${this._formatCountdown(seconds)}`;
+    if (!Number.isFinite(seconds) || seconds <= 0) return this._t("startsNow");
+    return this._t("startsIn", { value: this._formatCountdown(seconds) });
   }
 
   _renderRunning(stateObj, attrs) {
@@ -913,15 +1104,15 @@ class FazendaIrrigationCard extends HTMLElement {
       .map((zone) => {
         const effective = this._effectiveRuntime(zone);
         const progress = this._runtimeProgress(effective);
-        return `<div class="run-zone" data-runtime-zone="${this._escape(zone.entity_id)}" ${effective.phase === "watering" ? "active" : ""}><div class="run-head"><strong>${this._escape(zone.name || zone.entity_id)}</strong><span class="run-elapsed">${this._formatRuntimeDuration(progress.delivered)} / ${this._formatDuration(Math.ceil(Number(zone.required_seconds) / 60))}</span></div>${this._zoneSensorsMarkup(zone.entity_id)}<div class="progress"><span style="width:${Math.max(0, Math.min(100, progress.percent))}%"></span></div><div class="run-head phase"><span class="phase-label">${this._phaseLabel(effective)}</span><span class="run-remaining">Осталось ${this._formatDuration(Math.ceil(progress.remaining / 60))}</span></div></div>`;
+        return `<div class="run-zone" data-runtime-zone="${this._escape(zone.entity_id)}" ${effective.phase === "watering" ? "active" : ""}><div class="run-head"><strong>${this._escape(zone.name || zone.entity_id)}</strong><span class="run-elapsed">${this._formatRuntimeDuration(progress.delivered)} / ${this._formatDuration(Math.ceil(Number(zone.required_seconds) / 60))}</span></div>${this._zoneSensorsMarkup(zone.entity_id)}<div class="progress"><span style="width:${Math.max(0, Math.min(100, progress.percent))}%"></span></div><div class="run-head phase"><span class="phase-label">${this._phaseLabel(effective)}</span><span class="run-remaining">${this._t("remaining", { value: this._formatDuration(Math.ceil(progress.remaining / 60)) })}</span></div></div>`;
       })
       .join("");
     const finish = attrs.estimated_finish ? new Date(attrs.estimated_finish) : null;
     this.shadowRoot.innerHTML = `
       <style>${this._styles()}</style><ha-card>
         ${this._header(attrs, true)}
-        <div class="section"><div class="section-head"><h3>${attrs.mode === "parallel" ? "Одновременный полив" : "Полив по очереди"}</h3>${finish ? `<span class="secondary">до ${this._formatClock(finish)}</span>` : ""}</div><div class="run-zones">${rows}</div>${attrs.error ? `<p class="error">${this._escape(attrs.error)}</p>` : ""}</div>
-        <div class="footer"><button class="stop">Остановить</button></div>
+        <div class="section"><div class="section-head"><h3>${attrs.mode === "parallel" ? this._t("parallelIrrigation") : this._t("sequentialIrrigation")}</h3>${finish ? `<span class="secondary">${this._t("until", { value: this._formatClock(finish) })}</span>` : ""}</div><div class="run-zones">${rows}</div>${attrs.error ? `<p class="error">${this._escape(attrs.error)}</p>` : ""}</div>
+        <div class="footer"><button class="stop">${this._t("stop")}</button></div>
       </ha-card>`;
     this._bindZoneSensors();
     this.shadowRoot.querySelector(".stop")?.addEventListener("click", () => this._stop());
@@ -947,7 +1138,7 @@ class FazendaIrrigationCard extends HTMLElement {
       if (bar) bar.style.width = `${Math.max(0, Math.min(100, progress.percent))}%`;
       if (phase) phase.textContent = this._phaseLabel(effective);
       if (remaining) {
-        remaining.textContent = `Осталось ${this._formatDuration(Math.ceil(progress.remaining / 60))}`;
+        remaining.textContent = this._t("remaining", { value: this._formatDuration(Math.ceil(progress.remaining / 60)) });
       }
     });
   }
@@ -1002,7 +1193,7 @@ class FazendaIrrigationCardEditor extends HTMLElement {
       ...supportedConfig,
       ...(supportedConfig.zone_sensors === undefined
         ? {}
-        : { zone_sensors: normalizeZoneSensors(supportedConfig.zone_sensors) }),
+        : { zone_sensors: normalizeZoneSensors(supportedConfig.zone_sensors, this._hass) }),
     };
     this._renderKey = null;
     this._renderIfNeeded();
@@ -1015,6 +1206,10 @@ class FazendaIrrigationCardEditor extends HTMLElement {
       .replaceAll(">", "&gt;")
       .replaceAll('"', "&quot;")
       .replaceAll("'", "&#039;");
+  }
+
+  _t(key, values = {}) {
+    return fiText(this._hass, key, values);
   }
 
   _controllerEntity() {
@@ -1120,6 +1315,7 @@ class FazendaIrrigationCardEditor extends HTMLElement {
     const attrs = this._controllerState()?.attributes || {};
     const zones = this._allowedZones().map((zone) => [zone.entity_id, zone.name]);
     const renderKey = JSON.stringify([
+      fiLanguage(this._hass),
       this._config,
       zones,
       attrs.duration_presets,
@@ -1221,7 +1417,7 @@ class FazendaIrrigationCardEditor extends HTMLElement {
     return {
       valid,
       values: [...new Set(values)],
-      message: `Укажите целые минуты от ${minimum} до ${maximum} с шагом ${step}`,
+      message: this._t("presetValidation", { min: minimum, max: maximum, step }),
     };
   }
 
@@ -1241,7 +1437,7 @@ class FazendaIrrigationCardEditor extends HTMLElement {
       (maximum - minimum) % step === 0;
     return {
       valid,
-      message: `Допустимо: от ${controller.minimum} до ${controller.maximum} минут; шаг должен быть кратен ${controller.step}`,
+      message: this._t("rangeValidation", { min: controller.minimum, max: controller.maximum, step: controller.step }),
     };
   }
 
@@ -1254,7 +1450,7 @@ class FazendaIrrigationCardEditor extends HTMLElement {
     const zoneRows = selected
       .map((entityId, index) => `
           <div class="zone-row ${allowedIds.has(entityId) ? "" : "invalid"}" data-zone="${this._escape(entityId)}">
-            <div class="zone-handle" data-drag-handle data-index="${index}" tabindex="0" aria-label="Переместить ${this._escape(this._zoneName(entityId))}" title="Перетащить для изменения порядка">
+            <div class="zone-handle" data-drag-handle data-index="${index}" tabindex="0" aria-label="${this._escape(this._t("moveZone", { value: this._zoneName(entityId) }))}" title="${this._t("dragZone")}">
               <ha-icon icon="mdi:drag-horizontal-variant"></ha-icon>
             </div>
             <div class="zone-label">
@@ -1262,7 +1458,7 @@ class FazendaIrrigationCardEditor extends HTMLElement {
               <span>${this._escape(entityId)}</span>
             </div>
             <div class="zone-actions">
-              <button type="button" data-remove data-index="${index}" title="Убрать"><ha-icon icon="mdi:close"></ha-icon></button>
+              <button type="button" data-remove data-index="${index}" title="${this._t("remove")}"><ha-icon icon="mdi:close"></ha-icon></button>
             </div>
             <div class="zone-sensor-pickers">
               <ha-entity-picker data-zone-sensor data-zone-id="${this._escape(entityId)}" data-slot="0"></ha-entity-picker>
@@ -1313,33 +1509,33 @@ class FazendaIrrigationCardEditor extends HTMLElement {
       </style>
       <div class="editor">
         <div class="field">
-          <label class="label" for="title">Заголовок карточки</label>
+          <label class="label" for="title">${this._t("cardTitle")}</label>
           <input class="text-input" id="title" type="text" value="${this._escape(this._config.title || "")}">
         </div>
         <div class="field">
           <ha-entity-picker id="tank"></ha-entity-picker>
-          <p class="help">Только отображение. Защитный порог бака настраивается в свойствах интеграции.</p>
+          <p class="help">${this._t("tankHelp")}</p>
         </div>
         <div class="field">
-          <h3>Зоны и порядок полива</h3>
-          ${zoneRows ? `<ha-sortable id="zone-sortable" handle-selector=".zone-handle" draggable-selector=".zone-row" group="fazenda-irrigation-zones" invert-swap>${zoneRows}</ha-sortable>` : '<p class="help">Зоны не выбраны.</p>'}
-          ${available.length ? `<select id="add-zone"><option value="">Добавить зону…</option>${addOptions}</select>` : ""}
-          ${!allowed.length ? '<p class="help error">Интеграция Fazenda Irrigation не найдена или не содержит зон.</p>' : ""}
-          <p class="help">Перетаскивайте зоны за значок слева. Для каждой зоны можно выбрать до двух дополнительных датчиков: их значения появятся на плашке и откроют стандартную историю по нажатию. При первом открытии выбраны все зоны, далее карточка запоминает выбор пользователя.</p>
+          <h3>${this._t("zonesAndOrder")}</h3>
+          ${zoneRows ? `<ha-sortable id="zone-sortable" handle-selector=".zone-handle" draggable-selector=".zone-row" group="fazenda-irrigation-zones" invert-swap>${zoneRows}</ha-sortable>` : `<p class="help">${this._t("noZonesSelected")}</p>`}
+          ${available.length ? `<select id="add-zone"><option value="">${this._t("addZone")}</option>${addOptions}</select>` : ""}
+          ${!allowed.length ? `<p class="help error">${this._t("noIntegrationZones")}</p>` : ""}
+          <p class="help">${this._t("zonesHelp")}</p>
         </div>
         <div class="field">
-          <label class="label" for="presets">Времена быстрых кнопок, минуты</label>
+          <label class="label" for="presets">${this._t("presetLabel")}</label>
           <input class="text-input" id="presets" type="text" value="${this._escape(this._configuredPresets())}">
-          <p id="preset-help" class="help">Например: 15, 30, 60, 120. Порядок сохраняется.</p>
+          <p id="preset-help" class="help">${this._t("presetHelp")}</p>
         </div>
         <div class="field">
-          <h3>Диапазон «Другое», минуты</h3>
+          <h3>${this._t("customRange")}</h3>
           <div class="range-grid">
-            <label class="range-field"><span class="label">Минимум</span><input class="text-input" id="custom-min" type="number" value="${customBounds.minimum}"></label>
-            <label class="range-field"><span class="label">Максимум</span><input class="text-input" id="custom-max" type="number" value="${customBounds.maximum}"></label>
-            <label class="range-field"><span class="label">Шаг</span><input class="text-input" id="custom-step" type="number" value="${customBounds.step}"></label>
+            <label class="range-field"><span class="label">${this._t("minimum")}</span><input class="text-input" id="custom-min" type="number" value="${customBounds.minimum}"></label>
+            <label class="range-field"><span class="label">${this._t("maximum")}</span><input class="text-input" id="custom-max" type="number" value="${customBounds.maximum}"></label>
+            <label class="range-field"><span class="label">${this._t("step")}</span><input class="text-input" id="custom-step" type="number" value="${customBounds.step}"></label>
           </div>
-          <p id="custom-range-help" class="help">Диапазон ползунка «Другое». Он не может выходить за безопасный диапазон интеграции.</p>
+          <p id="custom-range-help" class="help">${this._t("customRangeHelp")}</p>
         </div>
       </div>`;
     this._bindEditor();
@@ -1353,7 +1549,7 @@ class FazendaIrrigationCardEditor extends HTMLElement {
         this._config.tank_entity ||
         this._controllerState()?.attributes?.tank_level_entity ||
         "";
-      tank.label = "Уровень воды для показа";
+      tank.label = this._t("tankPicker");
       tank.includeDomains = ["sensor", "input_number", "number"];
       tank.addEventListener("value-changed", (event) =>
         this._setValue("tank_entity", event.detail?.value || "")
@@ -1366,7 +1562,7 @@ class FazendaIrrigationCardEditor extends HTMLElement {
       const slot = Number(picker.dataset.slot);
       picker.hass = this._hass;
       picker.value = this._zoneSensorIds(picker.dataset.zoneId)[slot] || "";
-      picker.label = `Дополнительный датчик ${slot + 1}`;
+      picker.label = this._t("additionalSensor", { value: slot + 1 });
       picker.includeDomains = ["sensor", "binary_sensor"];
       picker.addEventListener("value-changed", (event) =>
         this._setZoneSensor(
@@ -1466,7 +1662,7 @@ if (!window.customCards.some((card) => card.type === "fazenda-irrigation-card"))
   window.customCards.push({
     type: "fazenda-irrigation-card",
     name: "Fazenda Irrigation",
-    description: "Безопасное ручное управление зонами полива",
+    description: "Safe manual control of irrigation zones",
     preview: false,
     documentationURL: "https://github.com/Diamond16/fazenda_irrigation",
   });

@@ -61,11 +61,11 @@ assert.ok(Card.getConfigElement() instanceof Editor);
 assert.deepEqual(Card.getStubConfig(), {});
 assert.throws(
   () => new Card().setConfig({ entity: "sensor.irrigation", zones: "switch.one" }),
-  /zones должен быть списком/
+  /zones must be a list/
 );
 assert.throws(
   () => new Card().setConfig({ zone_sensors: [] }),
-  /zone_sensors должен быть объектом/
+  /zone_sensors must be an object/
 );
 assert.throws(
   () =>
@@ -74,7 +74,7 @@ assert.throws(
         "switch.one": ["sensor.one", "sensor.two", "sensor.three"],
       },
     }),
-  /не более двух датчиков/
+  /no more than two sensors/
 );
 
 const sensorCard = new Card();
@@ -157,17 +157,17 @@ const attrs = {
 assert.equal(card._normalizeDuration(143, attrs), 145);
 assert.equal(card._normalizeDuration(1, attrs), 5);
 assert.equal(card._normalizeDuration(500, attrs), 360);
-assert.equal(card._formatRuntimeDuration(0), "0 сек");
-assert.equal(card._formatRuntimeDuration(59.9), "59 сек");
-assert.equal(card._formatRuntimeDuration(60), "1 мин");
-assert.equal(card._formatRuntimeDuration(3599), "59 мин");
-assert.equal(card._formatRuntimeDuration(3600), "1 ч");
-assert.equal(card._formatRuntimeDuration(3900), "1 ч 5 мин");
-assert.equal(card._formatCountdown(19.1), "20 сек");
-assert.equal(card._formatCountdown(60), "1 мин");
-assert.equal(card._formatCountdown(61), "2 мин");
-assert.equal(card._formatCountdown(3600), "1 ч");
-assert.equal(card._formatCountdown(3660), "1 ч 1 мин");
+assert.equal(card._formatRuntimeDuration(0), "0 sec");
+assert.equal(card._formatRuntimeDuration(59.9), "59 sec");
+assert.equal(card._formatRuntimeDuration(60), "1 min");
+assert.equal(card._formatRuntimeDuration(3599), "59 min");
+assert.equal(card._formatRuntimeDuration(3600), "1 h");
+assert.equal(card._formatRuntimeDuration(3900), "1 h 5 min");
+assert.equal(card._formatCountdown(19.1), "20 sec");
+assert.equal(card._formatCountdown(60), "1 min");
+assert.equal(card._formatCountdown(61), "2 min");
+assert.equal(card._formatCountdown(3600), "1 h");
+assert.equal(card._formatCountdown(3660), "1 h 1 min");
 
 const originalNow = Date.now;
 Date.now = () => new Date("2026-08-21T10:00:00+03:00").getTime();
@@ -176,21 +176,21 @@ assert.equal(
     phase: "waiting",
     next_start_at: "2026-08-21T10:00:19+03:00",
   }),
-  "Включится через 19 сек"
+  "Starts in 19 sec"
 );
 assert.equal(
   card._phaseLabel({
     phase: "waiting",
     next_start_at: "2026-08-21T10:03:01+03:00",
   }),
-  "Включится через 4 мин"
+  "Starts in 4 min"
 );
 assert.equal(
   card._phaseLabel({
     phase: "waiting",
     next_start_at: "2026-08-21T09:59:59+03:00",
   }),
-  "Включится сейчас"
+  "Starts now"
 );
 Date.now = originalNow;
 
@@ -283,11 +283,11 @@ const planZones = {
   cycles: 3,
 };
 card._mode = "parallel";
-assert.match(card._planZonesMarkup(planZones), /Одновременно:/);
+assert.match(card._planZonesMarkup(planZones), /Simultaneously:/);
 assert.match(card._planZonesMarkup(planZones), /Первая \+ Вторая/);
 assert.doesNotMatch(card._planZonesMarkup(planZones), /→/);
 card._mode = "sequential";
-assert.match(card._planZonesMarkup(planZones), /Порядок:/);
+assert.match(card._planZonesMarkup(planZones), /Order:/);
 assert.match(card._planZonesMarkup(planZones), /Первая → Вторая/);
 
 const runningCard = new Card();
@@ -316,7 +316,7 @@ runningCard._renderRunning({}, {
   ],
 });
 assert.match(runningCard.shadowRoot.innerHTML, /class="run-zone"[^>]* active/);
-assert.match(runningCard.shadowRoot.innerHTML, /19 сек \/ 2 ч/);
+assert.match(runningCard.shadowRoot.innerHTML, /19 sec \/ 2 h/);
 assert.match(runningCard._styles(), /\.run-zone\[active\]/);
 
 let rowActive = false;
@@ -359,10 +359,10 @@ runningCard.shadowRoot = {
 };
 runningCard._updateRunningProgress();
 assert.equal(rowActive, true);
-assert.equal(elapsedLabel.textContent, "1 мин / 5 мин");
+assert.equal(elapsedLabel.textContent, "1 min / 5 min");
 assert.equal(progressBar.style.width, "25%");
-assert.equal(phaseLabel.textContent, "Полив");
-assert.equal(remainingLabel.textContent, "Осталось 4 мин");
+assert.equal(phaseLabel.textContent, "Watering");
+assert.equal(remainingLabel.textContent, "4 min remaining");
 
 const errorCard = new Card();
 errorCard.setConfig({});
@@ -619,6 +619,25 @@ assert.match(editor.shadowRoot.innerHTML, /data-slot="1"/);
 assert.doesNotMatch(editor.shadowRoot.innerHTML, /data-move/);
 assert.doesNotMatch(editor.shadowRoot.innerHTML, /Контроллер полива/);
 assert.doesNotMatch(editor.shadowRoot.innerHTML, /Начальная схема полива/);
+assert.match(editor.shadowRoot.innerHTML, /Card title/);
+assert.match(editor.shadowRoot.innerHTML, /Quick-button durations, minutes/);
+assert.doesNotMatch(editor.shadowRoot.innerHTML, /[А-Яа-яЁё]/);
+
+const russianCard = new Card();
+russianCard._hass = { language: "ru", states: {} };
+assert.equal(russianCard._formatRuntimeDuration(3900), "1 ч 5 мин");
+assert.equal(russianCard._phaseLabel({ phase: "watering" }), "Полив");
+const russianEditor = new Editor();
+russianEditor._hass = editor._hass;
+russianEditor._hass.language = "ru";
+russianEditor._config = editor._config;
+russianEditor.shadowRoot = {
+  innerHTML: "",
+  querySelector() { return null; },
+  querySelectorAll() { return []; },
+};
+russianEditor._render();
+assert.match(russianEditor.shadowRoot.innerHTML, /Заголовок карточки/);
 
 card._hass = {
   states: {
@@ -676,5 +695,7 @@ fingerprintCard.hass = {
   },
 };
 assert.equal(renderCount, 2, "safety tank updates are tracked independently");
+fingerprintCard.hass = { language: "ru", states: relevantStates };
+assert.equal(renderCount, 3, "changing the Home Assistant language rerenders the card");
 
 console.log("Card behavior checks passed");
