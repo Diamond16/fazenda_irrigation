@@ -6,6 +6,15 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Documentation
+
+- Added detailed HACS and manual installation, updating, verification, and
+  removal instructions.
+- Documented every controller and card option, thermal-cycle behavior, actions,
+  recovery, troubleshooting, and safety limitations.
+- Added a capability comparison with Irrigation Unlimited, Smart Irrigation,
+  and IrrigationProgram to clarify Fazenda Irrigation's manual-session focus.
+
 ## [0.2.1] - 2026-08-21
 
 ### Fixed
