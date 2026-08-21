@@ -1,5 +1,7 @@
 # Fazenda Irrigation
 
+**English** | [Русский](README.ru.md)
+
 <p align="center">
   <img src="custom_components/fazenda_irrigation/brand/icon.png" width="128" alt="Fazenda Irrigation icon">
 </p>
@@ -29,6 +31,20 @@ well-defined session when needed.
 - Card settings for the displayed tank, zone subset and order, up to two
   additional sensors per zone, duration buttons, and custom slider range.
 - Home Assistant actions for automations; no integration YAML is required.
+
+## Card preview
+
+### Ready to start
+
+<p align="center">
+  <img src="docs/images/card-idle.png" width="480" alt="Fazenda Irrigation card ready to start a session">
+</p>
+
+### Irrigation running
+
+<p align="center">
+  <img src="docs/images/card-running.png" width="480" alt="Fazenda Irrigation card while irrigation is running">
+</p>
 
 Fazenda Irrigation does not calculate watering demand from weather or soil
 moisture and does not create recurring schedules. Projects such as

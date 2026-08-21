@@ -6,6 +6,11 @@ Notable changes are documented here using
 
 ## [Unreleased]
 
+### Documentation
+
+- Added English and Russian README navigation and card previews for idle and
+  running irrigation states.
+
 ## [0.9.1] - 2026-08-21
 
 ### Added
