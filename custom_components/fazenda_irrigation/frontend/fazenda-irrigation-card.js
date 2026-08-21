@@ -1,4 +1,4 @@
-const FI_CARD_VERSION = "0.9.3";
+const FI_CARD_VERSION = "0.9.4";
 
 const FI_TRANSLATIONS = {
   en: {

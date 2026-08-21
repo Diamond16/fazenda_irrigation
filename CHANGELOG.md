@@ -6,6 +6,13 @@ Notable changes are documented here using
 
 ## [Unreleased]
 
+## [0.9.4] - 2026-08-21
+
+### Fixed
+
+- Register the bundled card as a storage-mode Lovelace module resource so it
+  starts loading early enough on a cold or hard dashboard refresh.
+
 ## [0.9.3] - 2026-08-21
 
 ### Changed
@@ -78,7 +85,8 @@ Notable changes are documented here using
 - Persistent thermal accounting, optional tank interlock, optional source
   control, bundled card, actions, recovery, and tests.
 
-[Unreleased]: https://github.com/Diamond16/fazenda_irrigation/compare/v0.9.3...HEAD
+[Unreleased]: https://github.com/Diamond16/fazenda_irrigation/compare/v0.9.4...HEAD
+[0.9.4]: https://github.com/Diamond16/fazenda_irrigation/compare/v0.9.3...v0.9.4
 [0.9.3]: https://github.com/Diamond16/fazenda_irrigation/compare/v0.9.2...v0.9.3
 [0.9.2]: https://github.com/Diamond16/fazenda_irrigation/compare/v0.9.1...v0.9.2
 [0.9.1]: https://github.com/Diamond16/fazenda_irrigation/compare/v0.2.1...v0.9.1

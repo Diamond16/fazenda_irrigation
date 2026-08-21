@@ -8,6 +8,7 @@ from pathlib import Path
 import voluptuous as vol
 from homeassistant.components.frontend import add_extra_js_url
 from homeassistant.components.http import StaticPathConfig
+from homeassistant.components.lovelace.resources import ResourceStorageCollection
 from homeassistant.components.sensor import DOMAIN as SENSOR_DOMAIN
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
@@ -29,10 +30,11 @@ from .const import (
     SERVICE_STOP,
 )
 from .controller import IrrigationController
+from .lovelace import async_register_resource
 
 PLATFORMS = [Platform.SENSOR]
 CARD_PATH = f"/{DOMAIN}/fazenda-irrigation-card.js"
-CARD_URL = f"{CARD_PATH}?v=0.9.3"
+CARD_URL = f"{CARD_PATH}?v=0.9.4"
 CARD_FILE = Path(__file__).parent / "frontend" / "fazenda-irrigation-card.js"
 DATA_CLAIMS = "entity_claims"
 
@@ -47,7 +49,19 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         await hass.http.async_register_static_paths(
             [StaticPathConfig(CARD_PATH, str(CARD_FILE), cache_headers=True)]
         )
-        add_extra_js_url(hass, CARD_URL)
+        lovelace = hass.data.get("lovelace")
+        resources = (
+            lovelace.resources
+            if hasattr(lovelace, "resources")
+            else lovelace.get("resources")
+            if isinstance(lovelace, dict)
+            else None
+        )
+        if isinstance(resources, ResourceStorageCollection):
+            await async_register_resource(resources, CARD_PATH, CARD_URL)
+        else:
+            # YAML-mode dashboards do not expose writable resource storage.
+            add_extra_js_url(hass, CARD_URL)
     else:
         _LOGGER.warning("Dashboard card file is missing: %s", CARD_FILE)
 
